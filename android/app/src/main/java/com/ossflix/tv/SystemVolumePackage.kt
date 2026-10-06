@@ -1,4 +1,4 @@
-package com.ossflix.mobile
+package com.ossflix.tv
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule

@@ -10,7 +10,6 @@ import { TitleRail } from "../components/TitleRail";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { colors } from "../theme/colors";
 import type { Recommendation } from "../types/api";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 
 // Group by the first genre in "Because you watch Action, Drama", like the web For You page.
 export function groupRecommendations(recs: Recommendation[]): { title: string; items: Recommendation[] }[] {
@@ -27,7 +26,6 @@ export function groupRecommendations(recs: Recommendation[]): { title: string; i
 }
 
 export function RecommendationsScreen() {
-  useAllowRotation();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const query = useQuery({
     queryKey: ["recommendations"],

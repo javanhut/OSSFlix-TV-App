@@ -1,4 +1,4 @@
-package com.ossflix.mobile
+package com.ossflix.tv
 
 import android.app.Application
 import android.content.res.Configuration

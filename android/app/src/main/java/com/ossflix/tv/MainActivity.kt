@@ -1,4 +1,4 @@
-package com.ossflix.mobile
+package com.ossflix.tv
 
 import android.os.Build
 import android.os.Bundle

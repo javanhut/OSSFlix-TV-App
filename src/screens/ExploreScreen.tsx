@@ -12,10 +12,8 @@ import { PageHero, SCREEN_GUTTER } from "../components/PageHero";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { brandGradient, colors } from "../theme/colors";
 import { fonts } from "../theme/typography";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 
 export function ExploreScreen() {
-  useAllowRotation();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const query = useQuery({
     queryKey: ["categories"],

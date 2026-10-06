@@ -10,7 +10,6 @@ module.exports = {
     "App.tsx",
     "!src/types/**",
     "!**/*.d.ts",
-    "!src/components/SidebarOverlay.tsx",
   ],
   coverageReporters: ["text-summary", "text", "lcov", "html"],
   coverageThreshold: {

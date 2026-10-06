@@ -10,12 +10,10 @@ import { PageHero } from "../components/PageHero";
 import { PosterGrid } from "../components/PosterGrid";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { colors } from "../theme/colors";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 
 const ANIME_ALIASES = new Set(["anime", "animation"]);
 
 export function GenreScreen() {
-  useAllowRotation();
   const route = useRoute<RouteProp<RootStackParamList, "Genre">>();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { genre } = route.params;

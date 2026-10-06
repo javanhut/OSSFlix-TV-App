@@ -1,0 +1,173 @@
+name: Release Android TV APK
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+  security-events: write
+
+env:
+  # Run all JavaScript actions on Node.js 24 instead of the deprecated Node 20 default.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  vulnerability-scan:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy filesystem scan (blocking)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: "."
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Trivy SARIF report (non-blocking)
+        if: always()
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: "."
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: "0"
+          ignore-unfixed: true
+
+      - name: Upload SARIF to Security tab
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+
+  test:
+    name: Typecheck and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun global install cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-cache-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-cache-
+
+      - name: Cache node_modules
+        id: cache-node-modules-test
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('bun.lock') }}
+
+      - name: Install JS dependencies
+        if: steps.cache-node-modules-test.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Run tests with coverage
+        run: bun run test:ci
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ github.run_id }}
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: warn
+
+  build-and-release:
+    name: Build TV APK and publish release
+    needs: [vulnerability-scan, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # v3 installs the legacy `tools` package by default, which the SDK repository no longer serves.
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache Bun global install cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-cache-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-cache-
+
+      - name: Cache node_modules
+        id: cache-node-modules-build
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('bun.lock') }}
+
+      - name: Install JS dependencies
+        if: steps.cache-node-modules-build.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+
+      # Ivaldi checkouts don't always keep the executable bit on the wrapper.
+      - name: Make Gradle wrapper executable
+        run: chmod +x android/gradlew
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Stage APK with version filename
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             "OSSFlix-TV-${GITHUB_REF_NAME}.apk"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: OSSFlix-TV-*.apk
+          name: OSSFlix TV ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            Android TV / Google TV APK for sideloading, signed with the debug keystore. Not for Play Store.
+            It only installs on TVs; the phone app is released from OSSFlix-Mobile-App.
+
+            **Install with ADB:** on the TV, turn on Developer options → Network/USB debugging, then run
+            `adb connect <tv-ip>` and `adb install OSSFlix-TV-${{ github.ref_name }}.apk`.
+
+            **Install on the TV itself:** open the `.apk` with a file manager or downloader app after allowing
+            "Install unknown apps" for that app in the TV's settings.

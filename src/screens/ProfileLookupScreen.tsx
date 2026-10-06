@@ -11,12 +11,10 @@ import { useSessionStore } from "../state/session";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { colors } from "../theme/colors";
 import { fonts } from "../theme/typography";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ProfileLookup">;
 
 export function ProfileLookupScreen({ navigation }: Props) {
-  useAllowRotation();
   const { width, height } = useWindowDimensions();
   // TVs and landscape tablets: showcase beside the form, like the web login.
   const wide = width >= 900 && width > height;

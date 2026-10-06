@@ -9,16 +9,6 @@ jest.mock("expo-navigation-bar", () => ({
   setStyle: jest.fn(),
 }));
 
-jest.mock("expo-screen-orientation", () => ({
-  lockAsync: jest.fn(async () => {}),
-  unlockAsync: jest.fn(async () => {}),
-  OrientationLock: {
-    PORTRAIT_UP: 1,
-    LANDSCAPE: 4,
-    DEFAULT: 0,
-  },
-}));
-
 jest.mock("react-native-video", () => ({
   __esModule: true,
   default: () => null,

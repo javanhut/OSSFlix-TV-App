@@ -7,11 +7,8 @@ import { api, normalizeServerUrl } from "../api/client";
 import { AppHeader } from "../components/AppHeader";
 import { useSessionStore } from "../state/session";
 import { colors } from "../theme/colors";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 
 export function ServerConnectScreen() {
-  useAllowRotation();
-
   const [serverUrl, setServerUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const setConfiguredServerUrl = useSessionStore((state) => state.setServerUrl);

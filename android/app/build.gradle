@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.ossflix.mobile'
+    namespace 'com.ossflix.tv'
     defaultConfig {
-        applicationId 'com.ossflix.mobile'
+        applicationId 'com.ossflix.tv'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

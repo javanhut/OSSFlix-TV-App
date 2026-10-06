@@ -9,10 +9,8 @@ import { PageHero } from "../components/PageHero";
 import { PosterGrid } from "../components/PosterGrid";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { colors } from "../theme/colors";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 
 export function WatchlistScreen() {
-  useAllowRotation();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const query = useQuery({
     queryKey: ["watchlist"],

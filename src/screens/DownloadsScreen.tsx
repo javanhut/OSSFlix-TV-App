@@ -8,7 +8,6 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { AppHeader } from "../components/AppHeader";
 import { EmptyState } from "../components/EmptyState";
 import { deleteDownload, pauseDownload, resumeDownload } from "../downloads/downloadManager";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { useDownloadsStore } from "../state/downloads";
 import { useSessionStore } from "../state/session";
@@ -30,7 +29,6 @@ function sortItems(items: DownloadItem[]): DownloadItem[] {
 }
 
 export function DownloadsScreen() {
-  useAllowRotation();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const items = useDownloadsStore((state) => state.items);
   const progress = useDownloadsStore((state) => state.progress);

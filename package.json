@@ -1,5 +1,5 @@
 {
-  "name": "ossflix-mobile-app",
+  "name": "ossflix-tv-app",
   "version": "0.1.0",
   "private": true,
   "main": "index.js",
@@ -31,7 +31,6 @@
     "expo-font": "~57.0.4",
     "expo-linear-gradient": "~57.0.2",
     "expo-navigation-bar": "~57.0.3",
-    "expo-screen-orientation": "~57.0.2",
     "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",

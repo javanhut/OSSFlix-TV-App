@@ -1,7 +1,7 @@
 /**
- * PlayerScreen contains substantial gesture/Video integration. We mock the
- * heavy native pieces (react-native-video, expo-screen-orientation,
- * useSafeAreaInsets, native volume bridge) and exercise the React-side state
+ * PlayerScreen wraps react-native-video with remote-driven controls. We mock the
+ * heavy native pieces (react-native-video, useSafeAreaInsets, native volume
+ * bridge) and exercise the React-side state
  * machine: control toggling, menu wiring, navigation, lifecycle persistence.
  */
 
@@ -23,28 +23,18 @@ jest.mock("react-native-video", () => {
   };
 });
 
-jest.mock("expo-screen-orientation", () => ({
-  lockAsync: jest.fn(async () => {}),
-  OrientationLock: { LANDSCAPE: 4, PORTRAIT_UP: 1 },
-}));
-
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
   SafeAreaProvider: ({ children }: any) => children,
 }));
 
-const mockSetVolume = jest.fn(async (v: number) => v);
-const mockGetVolumeInfo = jest.fn(async () => ({ volume: 0.7, maxVolume: 15 }));
 const mockSetPlayerStream = jest.fn();
 jest.mock("../../src/native/systemVolume", () => ({
-  getSystemMusicVolume: jest.fn(async () => 0.7),
-  getSystemMusicVolumeInfo: (...args: unknown[]) => mockGetVolumeInfo(...(args as [])),
-  setSystemMusicVolume: (...args: unknown[]) => mockSetVolume(...(args as [number])),
   setPlayerVolumeStream: (...args: unknown[]) => mockSetPlayerStream(...(args as [])),
 }));
 
 import React from "react";
-import { DeviceEventEmitter, PanResponder } from "react-native";
+import { DeviceEventEmitter } from "react-native";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Video from "react-native-video";
@@ -88,66 +78,10 @@ function renderPlayer(routeOverride?: ReturnType<typeof makeRoute>) {
   );
 }
 
-function layoutPlayerScreen(root: ReturnType<typeof renderPlayer>) {
-  fireEvent(root.getByTestId("player-screen"), "layout", {
-    nativeEvent: { layout: { width: 300, height: 300, x: 0, y: 0 } },
-  });
-}
-
-async function dragGesture(
-  root: ReturnType<typeof renderPlayer>,
-  { locationX, locationY, dx, dy }: { locationX: number; locationY: number; dx: number; dy: number },
-) {
-  const surface = root.getByTestId("gesture-surface");
-  await act(async () => {
-    surface.props.onResponderGrant?.(
-      { nativeEvent: { locationX, locationY, pageY: locationY } },
-      { dx: 0, dy: 0, moveY: locationY },
-    );
-    surface.props.onResponderMove?.(
-      {
-        nativeEvent: {
-          locationX: locationX + dx,
-          locationY: locationY + dy,
-          pageY: locationY + dy,
-        },
-      },
-      { dx, dy, moveY: locationY + dy },
-    );
-    surface.props.onResponderRelease?.(
-      {
-        nativeEvent: {
-          locationX: locationX + dx,
-          locationY: locationY + dy,
-          pageY: locationY + dy,
-        },
-      },
-      { dx, dy, moveY: locationY + dy },
-    );
-  });
-}
-
 beforeEach(() => {
-  jest.spyOn(PanResponder, "create").mockImplementation(
-    (config: any) =>
-      ({
-        panHandlers: {
-          onStartShouldSetResponder: (event: any) => config.onStartShouldSetPanResponder?.(event),
-          onMoveShouldSetResponder: (event: any, gestureState: any) =>
-            config.onMoveShouldSetPanResponder?.(event, gestureState),
-          onResponderGrant: (event: any, gestureState: any) => config.onPanResponderGrant?.(event, gestureState),
-          onResponderMove: (event: any, gestureState: any) => config.onPanResponderMove?.(event, gestureState),
-          onResponderRelease: (event: any, gestureState: any) => config.onPanResponderRelease?.(event, gestureState),
-          onResponderTerminate: (event: any, gestureState: any) =>
-            config.onPanResponderTerminate?.(event, gestureState),
-        },
-      }) as any,
-  );
   navigation.navigate.mockReset();
   navigation.goBack.mockReset();
   mockSeek.mockReset();
-  mockSetVolume.mockClear();
-  mockGetVolumeInfo.mockClear();
   mockSetPlayerStream.mockClear();
   useSessionStore.setState({
     bootstrapped: false,
@@ -206,11 +140,6 @@ describe("PlayerScreen — render and Video wiring", () => {
     expect(props.textTracks[0].uri).toContain("/api/subtitles?src=s.vtt");
   });
 
-  it("reads the system music volume on mount", async () => {
-    renderPlayer();
-    await waitFor(() => expect(mockGetVolumeInfo).toHaveBeenCalled());
-  });
-
   it("configures the player to use the music stream on mount", async () => {
     renderPlayer();
     await waitFor(() => expect(mockSetPlayerStream).toHaveBeenCalled());
@@ -220,76 +149,6 @@ describe("PlayerScreen — render and Video wiring", () => {
     const { findByText } = renderPlayer();
     expect(await findByText("Foo")).toBeTruthy();
     expect(await findByText("Episode 1: Foo")).toBeTruthy();
-  });
-});
-
-describe("PlayerScreen — volume gestures", () => {
-  it("raises the volume when dragging upward from the right-side lane", async () => {
-    const screen = renderPlayer();
-    layoutPlayerScreen(screen);
-    await waitFor(() => expect(mockGetVolumeInfo).toHaveBeenCalled());
-
-    await dragGesture(screen, {
-      locationX: 260,
-      locationY: 220,
-      dx: 0,
-      dy: -200,
-    });
-
-    await waitFor(() => expect(mockSetVolume).toHaveBeenCalledWith(1));
-    expect((Video as any).lastProps.volume).toBe(1);
-    expect(mockSeek).not.toHaveBeenCalled();
-  });
-
-  it("lowers the volume when dragging downward from the right-side lane", async () => {
-    mockGetVolumeInfo.mockResolvedValueOnce({ volume: 0.8, maxVolume: 15 });
-    const screen = renderPlayer();
-    layoutPlayerScreen(screen);
-    await waitFor(() => expect(mockGetVolumeInfo).toHaveBeenCalled());
-
-    await dragGesture(screen, {
-      locationX: 250,
-      locationY: 100,
-      dx: 0,
-      dy: 120,
-    });
-
-    await waitFor(() => expect(mockSetVolume).toHaveBeenCalled());
-    const lastVolume = mockSetVolume.mock.calls.at(-1)?.[0];
-    expect(lastVolume).toBeCloseTo(4 / 15, 5);
-    expect((Video as any).lastProps.volume).toBe(1);
-  });
-
-  it("does not change volume when the drag starts outside the right-side lane", async () => {
-    const screen = renderPlayer();
-    layoutPlayerScreen(screen);
-    await waitFor(() => expect(mockGetVolumeInfo).toHaveBeenCalled());
-
-    await dragGesture(screen, {
-      locationX: 150,
-      locationY: 180,
-      dx: 0,
-      dy: -90,
-    });
-
-    expect(mockSetVolume).not.toHaveBeenCalled();
-    expect((Video as any).lastProps.volume).toBe(1);
-  });
-
-  it("does not change volume for a small movement on the right side", async () => {
-    const screen = renderPlayer();
-    layoutPlayerScreen(screen);
-    await waitFor(() => expect(mockGetVolumeInfo).toHaveBeenCalled());
-
-    await dragGesture(screen, {
-      locationX: 260,
-      locationY: 180,
-      dx: 0,
-      dy: -8,
-    });
-
-    expect(mockSetVolume).not.toHaveBeenCalled();
-    expect((Video as any).lastProps.volume).toBe(1);
   });
 });
 

@@ -29,7 +29,6 @@ import {
 
 type AudioSelection = AudioVariant | "both";
 import { formatTitleType } from "../utils/titleType";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "TitleDetails">;
 
@@ -61,7 +60,6 @@ function buildEntry(video: string, dirPath: string): EpisodeEntry {
 }
 
 export function TitleDetailsScreen({ route, navigation }: Props) {
-  useAllowRotation();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
   const insets = useSafeAreaInsets();

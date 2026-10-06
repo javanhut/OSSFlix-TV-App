@@ -9,12 +9,10 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { api } from "../api/client";
 import { AppHeader } from "../components/AppHeader";
 import { colors } from "../theme/colors";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 import { useSessionStore } from "../state/session";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 
 export function ProfileScreen() {
-  useAllowRotation();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const queryClient = useQueryClient();
   const profile = useSessionStore((state) => state.profile);

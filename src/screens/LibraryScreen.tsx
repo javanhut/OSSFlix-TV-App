@@ -9,7 +9,6 @@ import { PageHero } from "../components/PageHero";
 import { PosterGrid } from "../components/PosterGrid";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { colors } from "../theme/colors";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 
 // Same copy as the web Movies / TV Shows pages.
 function librarySubtitle(type: string, count: number): string {
@@ -23,7 +22,6 @@ function librarySubtitle(type: string, count: number): string {
 }
 
 export function LibraryScreen() {
-  useAllowRotation();
   const route = useRoute<RouteProp<RootStackParamList, "Library">>();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { type, title } = route.params;

@@ -8,11 +8,8 @@ import { AppHeader } from "../components/AppHeader";
 import { PasswordField } from "../components/PasswordField";
 import { useSessionStore } from "../state/session";
 import { colors } from "../theme/colors";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 
 export function RegisterScreen() {
-  useAllowRotation();
-
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

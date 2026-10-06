@@ -20,7 +20,6 @@ import { TitleRail } from "../components/TitleRail";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { colors } from "../theme/colors";
 import { fonts } from "../theme/typography";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 import type { TitleSummary } from "../types/api";
 
 const BASIC_GENRES = new Set([
@@ -52,7 +51,6 @@ const BROWSE_LINKS: { label: string; to: (nav: NativeStackNavigationProp<RootSta
 ];
 
 export function HomeScreen() {
-  useAllowRotation();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();

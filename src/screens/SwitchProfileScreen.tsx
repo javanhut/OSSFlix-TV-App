@@ -20,7 +20,6 @@ import { AppHeader } from "../components/AppHeader";
 import { EmptyState } from "../components/EmptyState";
 import { PasswordField } from "../components/PasswordField";
 import { colors } from "../theme/colors";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 import { useSessionStore } from "../state/session";
 import type { PublicProfile } from "../types/api";
 import type { RootStackParamList } from "../navigation/RootNavigator";
@@ -28,7 +27,6 @@ import type { RootStackParamList } from "../navigation/RootNavigator";
 type Props = NativeStackScreenProps<RootStackParamList, "SwitchProfile">;
 
 export function SwitchProfileScreen({ navigation }: Props) {
-  useAllowRotation();
   const queryClient = useQueryClient();
   const currentProfile = useSessionStore((state) => state.profile);
   const setAuthenticatedSession = useSessionStore((state) => state.setAuthenticatedSession);

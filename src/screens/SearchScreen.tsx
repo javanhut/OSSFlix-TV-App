@@ -10,10 +10,8 @@ import { EmptyState } from "../components/EmptyState";
 import { TitleCard } from "../components/TitleCard";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { colors } from "../theme/colors";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 
 export function SearchScreen() {
-  useAllowRotation();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim());
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();

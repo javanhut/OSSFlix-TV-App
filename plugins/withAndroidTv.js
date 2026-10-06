@@ -1,7 +1,7 @@
 /*
- * Android TV support for `expo prebuild`:
- *  - lists the app in the TV launcher (LEANBACK_LAUNCHER) with a 320x180 banner
- *  - marks touchscreen and leanback as optional so one APK serves phones and TVs
+ * Android TV setup for `expo prebuild`:
+ *  - TV launcher only (LEANBACK_LAUNCHER replaces the phone LAUNCHER) with a 320x180 banner
+ *  - requires the leanback UI (TV-only install) and doesn't require a touchscreen
  * The checked-in android/ already has these changes; this keeps them on a regenerate.
  */
 const fs = require("node:fs");
@@ -11,18 +11,16 @@ const { withAndroidManifest, withDangerousMod } = require("expo/config-plugins")
 const BANNER_SOURCE = "assets/tv-banner.png";
 const BANNER_NAME = "tv_banner";
 
-function addUsesFeature(manifest, name) {
-  manifest["uses-feature"] = manifest["uses-feature"] || [];
-  if (!manifest["uses-feature"].some((f) => f.$["android:name"] === name)) {
-    manifest["uses-feature"].push({ $: { "android:name": name, "android:required": "false" } });
-  }
+function setUsesFeature(manifest, name, required) {
+  manifest["uses-feature"] = (manifest["uses-feature"] || []).filter((f) => f.$["android:name"] !== name);
+  manifest["uses-feature"].push({ $: { "android:name": name, "android:required": String(required) } });
 }
 
 function withTvManifest(config) {
   return withAndroidManifest(config, (cfg) => {
     const manifest = cfg.modResults.manifest;
-    addUsesFeature(manifest, "android.hardware.touchscreen");
-    addUsesFeature(manifest, "android.software.leanback");
+    setUsesFeature(manifest, "android.hardware.touchscreen", false);
+    setUsesFeature(manifest, "android.software.leanback", true);
 
     const app = manifest.application[0];
     app.$["android:banner"] = `@drawable/${BANNER_NAME}`;
@@ -31,7 +29,9 @@ function withTvManifest(config) {
       for (const filter of activity["intent-filter"] || []) {
         const isLauncher = (filter.action || []).some((a) => a.$["android:name"] === "android.intent.action.MAIN");
         if (!isLauncher) continue;
-        filter.category = filter.category || [];
+        filter.category = (filter.category || []).filter(
+          (c) => c.$["android:name"] !== "android.intent.category.LAUNCHER",
+        );
         if (!filter.category.some((c) => c.$["android:name"] === "android.intent.category.LEANBACK_LAUNCHER")) {
           filter.category.push({ $: { "android:name": "android.intent.category.LEANBACK_LAUNCHER" } });
         }

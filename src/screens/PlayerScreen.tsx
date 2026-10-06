@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, type LayoutChangeEvent, PanResponder, StyleSheet, Text, View } from "react-native";
+import { AppState, StyleSheet, Text, View } from "react-native";
 import { Pressable } from "../components/FocusPressable";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import * as ScreenOrientation from "expo-screen-orientation";
 import { useQuery } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import Video, { SelectedTrackType, TextTrackType } from "react-native-video";
@@ -13,22 +12,16 @@ import { api } from "../api/client";
 import { saveOfflineProgress } from "../downloads/downloadManager";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { useRemoteKeys } from "../native/remoteKeys";
-import { getSystemMusicVolumeInfo, setPlayerVolumeStream, setSystemMusicVolume } from "../native/systemVolume";
+import { setPlayerVolumeStream } from "../native/systemVolume";
 import { colors } from "../theme/colors";
 import { formatEpisodeLabel, parseEpisodePath } from "../utils/episodeNaming";
-import { isTV, useTVPreferredFocus } from "../utils/tv";
+import { useTVPreferredFocus } from "../utils/tv";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Player">;
 
-type GestureZone = "left" | "center" | "right";
 type SkipFeedback = { text: string; key: number } | null;
 
-const DOUBLE_TAP_MS = 280;
 const SEEK_STEP = 10;
-const VOLUME_ACTIVATION_DISTANCE = 12;
-const VOLUME_HORIZONTAL_TOLERANCE = 10;
-const VOLUME_TOUCH_ZONE_WIDTH = 1 / 3;
-const VOLUME_TOUCH_PADDING = 16;
 const COUNTDOWN_SECONDS = 10;
 const COUNTDOWN_FALLBACK_BUFFER = 15;
 
@@ -44,12 +37,6 @@ function formatTime(seconds: number): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function quantizeVolumeToSystemStep(volume: number, maxVolume: number): number {
-  const bounded = clamp(volume, 0, 1);
-  const steps = Math.max(1, maxVolume);
-  return Math.round(bounded * steps) / steps;
 }
 
 function normalizeSubtitleLanguage(language: string): "en" | "es" | "fr" | "de" | "it" | "pt" | "ja" | "ko" | "zh" {
@@ -75,29 +62,8 @@ export function PlayerScreen({ route, navigation }: Props) {
 
   const playerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const volumeHudTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownCancelledRef = useRef(false);
-  const lastAppliedSystemVolumeRef = useRef<number | null>(null);
-  const volumeUpdateTokenRef = useRef(0);
-  const lastTapRef = useRef<{ time: number; zone: GestureZone | null }>({
-    time: 0,
-    zone: null,
-  });
-  const gestureStartRef = useRef<{
-    zone: GestureZone;
-    volumeEligible: boolean;
-    volumeActive: boolean;
-  } | null>(null);
-  const progressTrackRef = useRef<View>(null);
-  const progressTrackPageXRef = useRef(0);
-  const scrubTimeRef = useRef(initialTime);
-
-  const [surfaceWidth, setSurfaceWidth] = useState(0);
-  const [surfaceHeight, setSurfaceHeight] = useState(0);
-  const [progressWidth, setProgressWidth] = useState(0);
-
   const [currentIndex, setCurrentIndex] = useState(startIndex);
   const [audioIndex, setAudioIndex] = useState(0);
   const [currentTime, setCurrentTime] = useState(initialTime);
@@ -107,15 +73,10 @@ export function PlayerScreen({ route, navigation }: Props) {
   const [paused, setPaused] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const playButtonRef = useRef<View>(null);
-  // On TV, focus play/pause whenever the controls appear.
+  // Put the remote on play/pause whenever the controls appear.
   useTVPreferredFocus(playButtonRef, showControls);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
-  const [isScrubbing, setIsScrubbing] = useState(false);
-  const [scrubTime, setScrubTime] = useState(initialTime);
-  const [systemVolume, setSystemVolume] = useState(1);
-  const [systemVolumeMax, setSystemVolumeMax] = useState(15);
-  const [volumeHud, setVolumeHud] = useState<number | null>(null);
   const [skipFeedback, setSkipFeedback] = useState<SkipFeedback>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
 
@@ -156,7 +117,7 @@ export function PlayerScreen({ route, navigation }: Props) {
   }, [offline, currentOfflineMeta?.subtitles, subtitles]);
 
   const totalDuration = duration || (offline ? currentOfflineMeta?.duration : probeQuery.data?.duration) || 0;
-  const displayTime = isScrubbing ? scrubTime : currentTime;
+  const displayTime = currentTime;
   const playedPercent = totalDuration > 0 ? clamp((displayTime / totalDuration) * 100, 0, 100) : 0;
 
   const persistProgress = useCallback(
@@ -188,11 +149,6 @@ export function PlayerScreen({ route, navigation }: Props) {
     setShowSpeedMenu(false);
   }, []);
 
-  const hideVolumeHud = useCallback(() => {
-    if (volumeHudTimeoutRef.current) clearTimeout(volumeHudTimeoutRef.current);
-    setVolumeHud(null);
-  }, []);
-
   const hideControlsSoon = useCallback(() => {
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     if (paused) return;
@@ -212,7 +168,6 @@ export function PlayerScreen({ route, navigation }: Props) {
       const bounded = clamp(time, 0, totalDuration || time);
       playerRef.current?.seek(bounded);
       setCurrentTime(bounded);
-      setScrubTime(bounded);
       setPendingSeekTime(0);
     },
     [totalDuration],
@@ -235,16 +190,14 @@ export function PlayerScreen({ route, navigation }: Props) {
   );
 
   const togglePlayPause = useCallback(() => {
-    hideVolumeHud();
     setPaused((value) => !value);
     setShowControls(true);
-  }, [hideVolumeHud]);
+  }, []);
 
   const goToNext = useCallback(() => {
     if (!hasNext) return;
     setCurrentIndex((value) => value + 1);
     setCurrentTime(0);
-    setScrubTime(0);
     setPendingSeekTime(0);
     setAudioIndex(0);
     setPaused(false);
@@ -255,7 +208,6 @@ export function PlayerScreen({ route, navigation }: Props) {
     if (!hasPrev) return;
     setCurrentIndex((value) => value - 1);
     setCurrentTime(0);
-    setScrubTime(0);
     setPendingSeekTime(0);
     setAudioIndex(0);
     setPaused(false);
@@ -318,41 +270,17 @@ export function PlayerScreen({ route, navigation }: Props) {
     if (currentIndex === startIndex) {
       setCurrentTime(initialTime);
       setPendingSeekTime(initialTime);
-      setScrubTime(initialTime);
       return;
     }
     setCurrentTime(0);
     setPendingSeekTime(0);
-    setScrubTime(0);
   }, [currentIndex, initialTime, startIndex]);
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      // TVs are always landscape; forcing orientation there can letterbox the app.
-      if (isTV) return;
-      try {
-        await ScreenOrientation.unlockAsync();
-        if (cancelled) return;
-        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-      } catch {}
-    })();
+    // Remote volume keys adjust the media stream while the player is open.
     setPlayerVolumeStream();
-    void getSystemMusicVolumeInfo()
-      .then(({ volume, maxVolume }) => {
-        setSystemVolume(volume);
-        setSystemVolumeMax(maxVolume);
-        lastAppliedSystemVolumeRef.current = volume;
-      })
-      .catch(() => {});
     return () => {
-      cancelled = true;
-      if (!isTV) {
-        void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
-      }
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-      if (tapTimeoutRef.current) clearTimeout(tapTimeoutRef.current);
-      if (volumeHudTimeoutRef.current) clearTimeout(volumeHudTimeoutRef.current);
     };
   }, []);
 
@@ -424,71 +352,6 @@ export function PlayerScreen({ route, navigation }: Props) {
     hideControlsSoon();
   }, [hideControlsSoon, paused]);
 
-  const progressToTime = useCallback(
-    (locationX: number) => {
-      if (progressWidth <= 0 || totalDuration <= 0) return 0;
-      const ratio = clamp(locationX / progressWidth, 0, 1);
-      return ratio * totalDuration;
-    },
-    [progressWidth, totalDuration],
-  );
-
-  const handleProgressLayout = useCallback((event: LayoutChangeEvent) => {
-    setProgressWidth(event.nativeEvent.layout.width);
-    progressTrackRef.current?.measureInWindow((x) => {
-      if (Number.isFinite(x)) progressTrackPageXRef.current = x;
-    });
-  }, []);
-
-  const handleSurfaceLayout = useCallback((event: LayoutChangeEvent) => {
-    setSurfaceWidth(event.nativeEvent.layout.width);
-    setSurfaceHeight(event.nativeEvent.layout.height);
-  }, []);
-
-  const getZoneForX = useCallback(
-    (x: number): GestureZone => {
-      if (surfaceWidth <= 0) return "center";
-      const third = surfaceWidth / 3;
-      if (x < third) return "left";
-      if (x > third * 2) return "right";
-      return "center";
-    },
-    [surfaceWidth],
-  );
-
-  const isVolumeTouchZone = useCallback(
-    (x: number) => {
-      if (surfaceWidth <= 0) return false;
-      return x >= surfaceWidth * (1 - VOLUME_TOUCH_ZONE_WIDTH);
-    },
-    [surfaceWidth],
-  );
-
-  const handleSingleTap = useCallback(() => {
-    if (showControls) {
-      setShowControls(false);
-      clearMenus();
-    } else {
-      showControlsTemporarily();
-    }
-  }, [clearMenus, showControls, showControlsTemporarily]);
-
-  const handleDoubleTap = useCallback(
-    (zone: GestureZone) => {
-      if (zone === "left") {
-        skipBy(-SEEK_STEP);
-        return;
-      }
-      if (zone === "right") {
-        skipBy(SEEK_STEP);
-        return;
-      }
-      togglePlayPause();
-      showControlsTemporarily();
-    },
-    [showControlsTemporarily, skipBy, togglePlayPause],
-  );
-
   // TV remote: media keys always work; with controls hidden, left/right seek quietly and
   // any other D-pad key brings the controls back (focused on play/pause).
   useRemoteKeys(({ key }) => {
@@ -520,174 +383,6 @@ export function PlayerScreen({ route, navigation }: Props) {
     showControlsTemporarily();
   });
 
-  const getGestureTouchY = useCallback(
-    (event: { nativeEvent: { pageY?: number; locationY?: number } }, gestureState?: { moveY?: number }) => {
-      if (gestureState?.moveY != null && Number.isFinite(gestureState.moveY)) {
-        return gestureState.moveY;
-      }
-      if (event.nativeEvent.pageY != null && Number.isFinite(event.nativeEvent.pageY)) {
-        return event.nativeEvent.pageY;
-      }
-      return event.nativeEvent.locationY ?? 0;
-    },
-    [],
-  );
-
-  const getVolumeForTouchY = useCallback(
-    (touchY: number) => {
-      const trackHeight = Math.max(surfaceHeight - VOLUME_TOUCH_PADDING * 2, 1);
-      const normalizedY = clamp((touchY - VOLUME_TOUCH_PADDING) / trackHeight, 0, 1);
-      return 1 - normalizedY;
-    },
-    [surfaceHeight],
-  );
-
-  const applySystemVolume = useCallback(
-    (nextVolume: number) => {
-      const clamped = quantizeVolumeToSystemStep(nextVolume, systemVolumeMax);
-      if (
-        lastAppliedSystemVolumeRef.current != null &&
-        Math.abs(lastAppliedSystemVolumeRef.current - clamped) < 0.0001
-      ) {
-        setVolumeHud(clamped);
-        return;
-      }
-
-      lastAppliedSystemVolumeRef.current = clamped;
-      setSystemVolume(clamped);
-      setVolumeHud(clamped);
-      const token = volumeUpdateTokenRef.current + 1;
-      volumeUpdateTokenRef.current = token;
-      void setSystemMusicVolume(clamped)
-        .then((appliedVolume) => {
-          if (volumeUpdateTokenRef.current !== token) return;
-          setSystemVolume(appliedVolume);
-          setVolumeHud(appliedVolume);
-          lastAppliedSystemVolumeRef.current = appliedVolume;
-        })
-        .catch(() => {});
-    },
-    [systemVolumeMax],
-  );
-
-  const gestureResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (event) => {
-          const { locationX } = event.nativeEvent;
-          const volumeEligible = isVolumeTouchZone(locationX);
-          gestureStartRef.current = {
-            zone: getZoneForX(locationX),
-            volumeEligible,
-            volumeActive: false,
-          };
-        },
-        onPanResponderMove: (event, gestureState) => {
-          const state = gestureStartRef.current;
-          if (!state?.volumeEligible || surfaceHeight <= 0) return;
-
-          const verticalDistance = Math.abs(gestureState.dy);
-          const horizontalDistance = Math.abs(gestureState.dx);
-          if (!state.volumeActive) {
-            if (verticalDistance < VOLUME_ACTIVATION_DISTANCE) return;
-            if (verticalDistance <= horizontalDistance + VOLUME_HORIZONTAL_TOLERANCE) return;
-          }
-
-          state.volumeActive = true;
-          const nextVolume = getVolumeForTouchY(getGestureTouchY(event, gestureState));
-          applySystemVolume(nextVolume);
-          setShowControls(true);
-          if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-          if (volumeHudTimeoutRef.current) clearTimeout(volumeHudTimeoutRef.current);
-        },
-        onPanResponderRelease: (event, gestureState) => {
-          const state = gestureStartRef.current;
-          gestureStartRef.current = null;
-
-          if (state?.volumeActive) {
-            if (surfaceHeight > 0) {
-              applySystemVolume(getVolumeForTouchY(getGestureTouchY(event, gestureState)));
-            }
-            volumeHudTimeoutRef.current = setTimeout(() => setVolumeHud(null), 700);
-            showControlsTemporarily();
-            return;
-          }
-
-          const now = Date.now();
-          const lastTap = lastTapRef.current;
-          if (lastTap.zone === state?.zone && now - lastTap.time < DOUBLE_TAP_MS) {
-            if (tapTimeoutRef.current) clearTimeout(tapTimeoutRef.current);
-            lastTapRef.current = { time: 0, zone: null };
-            handleDoubleTap(state?.zone || "center");
-            return;
-          }
-
-          lastTapRef.current = { time: now, zone: state?.zone || "center" };
-          if (tapTimeoutRef.current) clearTimeout(tapTimeoutRef.current);
-          tapTimeoutRef.current = setTimeout(() => {
-            lastTapRef.current = { time: 0, zone: null };
-            handleSingleTap();
-          }, DOUBLE_TAP_MS);
-        },
-        onPanResponderTerminate: () => {
-          gestureStartRef.current = null;
-          if (volumeHudTimeoutRef.current) clearTimeout(volumeHudTimeoutRef.current);
-          setVolumeHud(null);
-        },
-      }),
-    [
-      applySystemVolume,
-      getGestureTouchY,
-      getVolumeForTouchY,
-      getZoneForX,
-      handleDoubleTap,
-      handleSingleTap,
-      isVolumeTouchZone,
-      showControlsTemporarily,
-      surfaceHeight,
-    ],
-  );
-
-  const progressResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderTerminationRequest: () => false,
-        onShouldBlockNativeResponder: () => true,
-        onPanResponderGrant: (event, gestureState) => {
-          progressTrackRef.current?.measureInWindow((x) => {
-            if (Number.isFinite(x)) progressTrackPageXRef.current = x;
-          });
-          const pageX = gestureState.x0 || event.nativeEvent.pageX || 0;
-          const relX = pageX - progressTrackPageXRef.current;
-          const nextTime = progressToTime(relX);
-          scrubTimeRef.current = nextTime;
-          setIsScrubbing(true);
-          setScrubTime(nextTime);
-        },
-        onPanResponderMove: (event, gestureState) => {
-          const pageX = gestureState.moveX || event.nativeEvent.pageX || 0;
-          const relX = pageX - progressTrackPageXRef.current;
-          const nextTime = progressToTime(relX);
-          scrubTimeRef.current = nextTime;
-          setScrubTime(nextTime);
-        },
-        onPanResponderRelease: () => {
-          setIsScrubbing(false);
-          seekTo(scrubTimeRef.current);
-          hideControlsSoon();
-        },
-        onPanResponderTerminate: () => {
-          setIsScrubbing(false);
-          hideControlsSoon();
-        },
-      }),
-    [hideControlsSoon, progressToTime, seekTo],
-  );
-
   const skipRange = useMemo(() => {
     if (!timings) return null;
     if (
@@ -710,7 +405,7 @@ export function PlayerScreen({ route, navigation }: Props) {
   }, [currentTime, timings]);
 
   return (
-    <View testID="player-screen" style={styles.screen} onLayout={handleSurfaceLayout}>
+    <View testID="player-screen" style={styles.screen}>
       <Video
         ref={playerRef}
         source={
@@ -742,7 +437,7 @@ export function PlayerScreen({ route, navigation }: Props) {
           hideControlsSoon();
         }}
         onProgress={(event) => {
-          if (!isScrubbing) setCurrentTime(event.currentTime);
+          setCurrentTime(event.currentTime);
         }}
         onEnd={() => {
           void persistProgress(totalDuration, totalDuration);
@@ -754,20 +449,9 @@ export function PlayerScreen({ route, navigation }: Props) {
         }}
       />
 
-      <View testID="gesture-surface" style={styles.gestureSurface} {...gestureResponder.panHandlers} />
-
       {skipFeedback ? (
         <View key={skipFeedback.key} style={styles.feedbackBubble}>
           <Text style={styles.feedbackText}>{skipFeedback.text}</Text>
-        </View>
-      ) : null}
-
-      {volumeHud != null ? (
-        <View style={styles.volumeHud}>
-          <View style={styles.volumeTrack}>
-            <View style={[styles.volumeFill, { height: `${volumeHud * 100}%` }]} />
-          </View>
-          <Text style={styles.volumeText}>{Math.round(volumeHud * 100)}%</Text>
         </View>
       ) : null}
 
@@ -847,14 +531,7 @@ export function PlayerScreen({ route, navigation }: Props) {
               <Text style={styles.timeLabel}>{formatTime(totalDuration)}</Text>
             </View>
 
-            <View
-              ref={progressTrackRef}
-              testID="progress-track"
-              style={styles.progressTrack}
-              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-              onLayout={handleProgressLayout}
-              {...progressResponder.panHandlers}
-            >
+            <View testID="progress-track" style={styles.progressTrack}>
               <View style={styles.progressTrackBg} />
               <View style={[styles.progressFill, { width: `${playedPercent}%` }]} />
               <View style={[styles.progressThumb, { left: `${playedPercent}%` }]} />
@@ -927,10 +604,6 @@ const styles = StyleSheet.create({
   video: {
     ...StyleSheet.absoluteFill,
     backgroundColor: "#000",
-  },
-  gestureSurface: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 5,
   },
   topBar: {
     position: "absolute",
@@ -1114,32 +787,6 @@ const styles = StyleSheet.create({
   feedbackText: {
     color: colors.text,
     fontSize: 16,
-    fontWeight: "800",
-  },
-  volumeHud: {
-    position: "absolute",
-    right: 24,
-    top: "28%",
-    zIndex: 30,
-    alignItems: "center",
-    gap: 10,
-  },
-  volumeTrack: {
-    width: 36,
-    height: 160,
-    borderRadius: 18,
-    overflow: "hidden",
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-  },
-  volumeFill: {
-    width: "100%",
-    backgroundColor: colors.primary,
-  },
-  volumeText: {
-    color: colors.text,
     fontWeight: "800",
   },
   countdownOverlay: {

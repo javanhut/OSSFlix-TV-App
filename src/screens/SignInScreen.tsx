@@ -13,13 +13,10 @@ import type { RootStackParamList } from "../navigation/RootNavigator";
 import { useSessionStore } from "../state/session";
 import { colors } from "../theme/colors";
 import { fonts } from "../theme/typography";
-import { useAllowRotation } from "../hooks/useAllowRotation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "SignIn">;
 
 export function SignInScreen({ navigation }: Props) {
-  useAllowRotation();
-
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const selectedProfile = useSessionStore((state) => state.selectedProfile);

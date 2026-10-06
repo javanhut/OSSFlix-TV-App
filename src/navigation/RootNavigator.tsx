@@ -1,9 +1,7 @@
 import { type BottomTabBarButtonProps, createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
-import { StyleSheet, useWindowDimensions, View } from "react-native";
+import { StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -28,7 +26,6 @@ import { TitleDetailsScreen } from "../screens/TitleDetailsScreen";
 import { SearchScreen } from "../screens/SearchScreen";
 import { WatchlistScreen } from "../screens/WatchlistScreen";
 import { Pressable } from "../components/FocusPressable";
-import { SidebarOverlay, type SidebarItem } from "../components/SidebarOverlay";
 
 export type RootStackParamList = {
   ServerConnect: undefined;
@@ -102,61 +99,44 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 function MainTabs() {
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
-  const isLandscape = width > height;
-  const extraBottom = 28;
-  const iconSize = isLandscape ? 24 : 26;
+  const iconSize = 24;
   const railWidth = 56;
 
-  const tabBarStyle = isLandscape
-    ? {
-        backgroundColor: colors.glassStrong,
-        borderRightColor: colors.border,
-        borderRightWidth: 1,
-        borderTopWidth: 0,
-        paddingTop: insets.top + 14,
-        paddingBottom: insets.bottom + 14,
-        paddingStart: 0,
-        paddingEnd: 0,
-        paddingLeft: 0,
-        paddingHorizontal: 0,
-        width: railWidth,
-        minWidth: 0,
-        maxWidth: railWidth,
-      }
-    : {
-        backgroundColor: colors.glassStrong,
-        borderTopColor: colors.border,
-        paddingTop: 14,
-        paddingBottom: insets.bottom + extraBottom,
-        paddingHorizontal: 18,
-        height: 70 + insets.bottom + extraBottom,
-      };
+  // TV layout: a slim icon rail on the left, reached with D-pad left.
+  const tabBarStyle = {
+    backgroundColor: colors.glassStrong,
+    borderRightColor: colors.border,
+    borderRightWidth: 1,
+    borderTopWidth: 0,
+    paddingTop: insets.top + 14,
+    paddingBottom: insets.bottom + 14,
+    paddingHorizontal: 0,
+    width: railWidth,
+    minWidth: 0,
+    maxWidth: railWidth,
+  };
 
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
         tabBarButton: (props) => <TabButton {...props} />,
-        tabBarPosition: isLandscape ? "left" : "bottom",
+        tabBarPosition: "left",
         tabBarVariant: "uikit",
         tabBarActiveTintColor: "#ffffff",
         tabBarInactiveTintColor: colors.textDim,
         tabBarActiveBackgroundColor: "transparent",
         tabBarInactiveBackgroundColor: "transparent",
-        tabBarShowLabel: !isLandscape,
+        tabBarShowLabel: false,
         tabBarStyle,
-        tabBarItemStyle: isLandscape
-          ? {
-              paddingVertical: 10,
-              height: 56,
-              width: railWidth,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "transparent",
-            }
-          : { paddingVertical: 4 },
-        tabBarLabelStyle: { fontSize: 12, fontFamily: fonts.bodySemiBold, marginTop: 6 },
+        tabBarItemStyle: {
+          paddingVertical: 10,
+          height: 56,
+          width: railWidth,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "transparent",
+        },
       }}
     >
       <Tab.Screen
@@ -195,48 +175,6 @@ function MainTabs() {
         }}
       />
     </Tab.Navigator>
-  );
-}
-
-function MainTabsWithSidebar() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { width, height } = useWindowDimensions();
-  const isLandscape = width > height;
-
-  // Same order as the web navbar.
-  const items: SidebarItem[] = [
-    {
-      icon: "film",
-      label: "Movies",
-      onPress: () => navigation.navigate("Library", { type: "Movie", title: "Movies" }),
-    },
-    {
-      icon: "monitor",
-      label: "TV Shows",
-      onPress: () => navigation.navigate("Library", { type: "tv show", title: "TV Shows" }),
-    },
-    {
-      icon: "play-circle",
-      label: "Anime",
-      onPress: () => navigation.navigate("Genre", { genre: "Anime" }),
-    },
-    {
-      icon: "bookmark",
-      label: "My List",
-      onPress: () => navigation.navigate("Watchlist"),
-    },
-    {
-      icon: "star",
-      label: "Recommendations",
-      onPress: () => navigation.navigate("Recommendations"),
-    },
-  ];
-
-  return (
-    <View style={{ flex: 1 }}>
-      <MainTabs />
-      <SidebarOverlay items={items} enabled={!isLandscape} />
-    </View>
   );
 }
 
@@ -283,7 +221,7 @@ export function RootNavigator() {
         </>
       ) : (
         <>
-          <Stack.Screen name="MainTabs" component={MainTabsWithSidebar} options={{ headerShown: false }} />
+          <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
           <Stack.Screen name="TitleDetails" component={TitleDetailsScreen} options={overlayHeader} />
           <Stack.Screen name="Genre" component={GenreScreen} options={overlayHeader} />
           <Stack.Screen name="Library" component={LibraryScreen} options={overlayHeader} />
