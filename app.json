@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "OSSFlix Mobile",
+    "slug": "ossflix-mobile-app",
+    "scheme": "ossflixmobile",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/ReelScape_Icon.png",
+    "androidStatusBar": {
+      "hidden": true,
+      "translucent": true,
+      "backgroundColor": "#00000000",
+      "barStyle": "light-content"
+    },
+    "androidNavigationBar": {
+      "visible": "immersive",
+      "barStyle": "light-content",
+      "backgroundColor": "#00000000"
+    },
+    "android": {
+      "package": "com.ossflix.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/ReelScape_Icon.png",
+        "backgroundColor": "#0b1020"
+      }
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-status-bar",
+      "expo-font",
+      "./plugins/withAndroidTv"
+    ]
+  }
+}
