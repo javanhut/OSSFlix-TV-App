@@ -5,6 +5,7 @@ import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  Platform,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -82,6 +83,7 @@ export function FeaturedCarousel({
   onPlay,
   height,
   onFocus,
+  nextFocusUp,
 }: {
   items: TitleSummary[];
   onSelect: (item: TitleSummary) => void;
@@ -89,6 +91,8 @@ export function FeaturedCarousel({
   height: number;
   /** A hero button got D-pad focus (the home screen scrolls back to the top). */
   onFocus?: () => void;
+  /** Where D-pad up from the hero's buttons goes (the home header), as a native view handle. */
+  nextFocusUp?: number;
 }) {
   const screen = useWindowDimensions();
   const [activeIndex, setActiveIndex] = useState(0);
@@ -217,6 +221,7 @@ export function FeaturedCarousel({
                       focusStyle={focusGlow}
                       onFocus={handleButtonFocus}
                       onBlur={handleButtonBlur}
+                      nextFocusUp={nextFocusUp}
                     />
                   ) : null}
                   <GlassButton
@@ -229,6 +234,7 @@ export function FeaturedCarousel({
                     focusStyle={focusGlow}
                     onFocus={handleButtonFocus}
                     onBlur={handleButtonBlur}
+                    nextFocusUp={nextFocusUp}
                   />
                 </View>
               </View>
@@ -250,6 +256,11 @@ export function FeaturedCarousel({
             ) : (
               <Pressable
                 key={item.pathToDir}
+                // Touch only: on a TV the dots would be an extra stop between the hero and the rows,
+                // and pressing one removes it (the active dot isn't a button), dropping focus. On
+                // Android an accessible view is focusable too, so both are off there.
+                focusable={!Platform.isTV}
+                accessible={!Platform.isTV}
                 hitSlop={8}
                 accessibilityLabel={`Show ${item.name}`}
                 onPress={() => {

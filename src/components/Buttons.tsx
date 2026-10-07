@@ -26,6 +26,8 @@ type ButtonProps = {
   labelStyle?: StyleProp<TextStyle>;
   onFocus?: () => void;
   onBlur?: () => void;
+  /** Android TV: the view (native handle) that D-pad up goes to, instead of the nearest one. */
+  nextFocusUp?: number;
 };
 
 /** White, high-contrast play/resume action (web `.oss-btn-play`). */
@@ -43,6 +45,7 @@ export function PlayButton({
   labelStyle,
   onFocus,
   onBlur,
+  nextFocusUp,
 }: ButtonProps) {
   const hasTVPreferredFocus = useTVPreferredFocus(!!preferredFocus);
   return (
@@ -54,6 +57,7 @@ export function PlayButton({
       hasTVPreferredFocus={hasTVPreferredFocus}
       onFocus={onFocus}
       onBlur={onBlur}
+      nextFocusUp={nextFocusUp}
       focusStyle={[styles.playFocused, focusStyle]}
       style={({ pressed }) => [
         styles.base,
@@ -85,6 +89,7 @@ export function GlassButton({
   labelStyle,
   onFocus,
   onBlur,
+  nextFocusUp,
 }: ButtonProps) {
   const hasTVPreferredFocus = useTVPreferredFocus(!!preferredFocus);
   return (
@@ -96,6 +101,7 @@ export function GlassButton({
       hasTVPreferredFocus={hasTVPreferredFocus}
       onFocus={onFocus}
       onBlur={onBlur}
+      nextFocusUp={nextFocusUp}
       focusStyle={focusStyle}
       style={({ pressed }) => [
         styles.base,
@@ -127,6 +133,7 @@ export function PrimaryButton({
   labelStyle,
   onFocus,
   onBlur,
+  nextFocusUp,
 }: ButtonProps) {
   const hasTVPreferredFocus = useTVPreferredFocus(!!preferredFocus);
   return (
@@ -138,6 +145,7 @@ export function PrimaryButton({
       hasTVPreferredFocus={hasTVPreferredFocus}
       onFocus={onFocus}
       onBlur={onBlur}
+      nextFocusUp={nextFocusUp}
       focusStyle={focusStyle}
       style={({ pressed }) => [
         styles.base,

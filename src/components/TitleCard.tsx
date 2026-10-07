@@ -7,6 +7,7 @@ import { resolveAssetUrl } from "../api/client";
 import { colors } from "../theme/colors";
 import { fonts } from "../theme/typography";
 import type { TitleSummary } from "../types/api";
+import { useNativeHandle } from "../utils/tv";
 
 export const TITLE_CARD_WIDTH = 140;
 export const TITLE_CARD_GAP = 14;
@@ -24,6 +25,7 @@ export const TitleCard = memo(function TitleCard({
   style,
   onFocus,
   onBlur,
+  endOfRow = false,
 }: {
   item: TitleSummary;
   onPress: (item: TitleSummary) => void;
@@ -31,11 +33,15 @@ export const TitleCard = memo(function TitleCard({
   style?: StyleProp<ViewStyle>;
   onFocus?: (item: TitleSummary) => void;
   onBlur?: () => void;
+  /** Last card in a row: D-pad right stays put rather than jumping to a card in another row. */
+  endOfRow?: boolean;
 }) {
   const imageUrl = resolveAssetUrl(item.imagePath);
   const progress = typeof item.progressPct === "number" ? Math.max(0, Math.min(100, item.progressPct)) : 0;
   const [focused, setFocused] = useState(false);
   const scale = useRef(new Animated.Value(1)).current;
+  // Pointing "next right" at itself is how Android is told there's nothing further right.
+  const [slotRef, selfHandle] = useNativeHandle(endOfRow);
 
   const animateTo = (toValue: number) =>
     Animated.timing(scale, {
@@ -47,6 +53,8 @@ export const TitleCard = memo(function TitleCard({
 
   return (
     <Pressable
+      ref={slotRef}
+      nextFocusRight={selfHandle}
       onPress={() => onPress(item)}
       accessibilityRole="button"
       accessibilityLabel={item.name}

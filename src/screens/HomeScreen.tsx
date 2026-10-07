@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { type Ref, useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   type NativeScrollEvent,
@@ -26,6 +26,7 @@ import { colors } from "../theme/colors";
 import { focusGlow } from "../theme/focus";
 import { fonts } from "../theme/typography";
 import type { TitleSummary } from "../types/api";
+import { useNativeHandle } from "../utils/tv";
 
 const BASIC_GENRES = new Set([
   "Newly Added",
@@ -57,10 +58,11 @@ const BROWSE_LINKS: { label: string; to: (nav: NativeStackNavigationProp<RootSta
 ];
 
 /** A web-navbar-style link: muted until the remote lands on it, then white on a lifted pill. */
-function NavLink({ label, onPress }: { label: string; onPress: () => void }) {
+function NavLink({ label, onPress, linkRef }: { label: string; onPress: () => void; linkRef?: Ref<View> }) {
   const [focused, setFocused] = useState(false);
   return (
     <Pressable
+      ref={linkRef}
       onPress={onPress}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
@@ -107,6 +109,8 @@ export function HomeScreen() {
   const headerHeightRef = useRef(0);
   const railsTopRef = useRef(0);
   const railTopsRef = useRef(new Map<string, number>());
+  // Up from the hero goes to the header. Left to itself Android picks the sidebar, which is nearer.
+  const [firstNavLinkRef, firstNavLinkHandle] = useNativeHandle();
 
   const openTitle = useCallback(
     (item: TitleSummary) => navigation.navigate("TitleDetails", { dirPath: item.pathToDir }),
@@ -201,6 +205,7 @@ export function HomeScreen() {
             onSelect={openTitle}
             onPlay={(item) => navigation.navigate("TitleDetails", { dirPath: item.pathToDir, autoplay: true })}
             onFocus={isLandscape ? scrollToTop : undefined}
+            nextFocusUp={isLandscape ? firstNavLinkHandle : undefined}
           />
         ) : (
           <View style={{ height: insets.top + 56 }} />
@@ -272,8 +277,13 @@ export function HomeScreen() {
             Reelscape
           </Text>
           <View style={styles.navLinks}>
-            {BROWSE_LINKS.map((link) => (
-              <NavLink key={link.label} label={link.label} onPress={() => link.to(navigation)} />
+            {BROWSE_LINKS.map((link, index) => (
+              <NavLink
+                key={link.label}
+                label={link.label}
+                onPress={() => link.to(navigation)}
+                linkRef={index === 0 ? firstNavLinkRef : undefined}
+              />
             ))}
           </View>
         </View>

@@ -94,8 +94,14 @@ export function TitleRail({
   const handleCardBlur = useCallback(() => setHasFocus(false), []);
   // Stable so the list doesn't re-render every card when the heading highlight changes.
   const renderItem = useCallback(
-    ({ item }: { item: TitleSummary }) => (
-      <TitleCard item={item} onPress={onSelect} onFocus={handleCardFocus} onBlur={handleCardBlur} />
+    ({ item, index }: { item: TitleSummary; index: number }) => (
+      <TitleCard
+        item={item}
+        onPress={onSelect}
+        onFocus={handleCardFocus}
+        onBlur={handleCardBlur}
+        endOfRow={index === itemsRef.current.length - 1}
+      />
     ),
     [onSelect, handleCardFocus, handleCardBlur],
   );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type Ref, useState } from "react";
 import { ActivityIndicator, type StyleProp, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { Pressable } from "./FocusPressable";
 import { Feather } from "@expo/vector-icons";
@@ -9,6 +9,7 @@ import { fonts } from "../theme/typography";
 import type { ParsedEpisode } from "../utils/episodeNaming";
 import type { DownloadStatus } from "../types/downloads";
 import { isProgressInProgress, isProgressWatched } from "../utils/progress";
+import { useNativeHandle } from "../utils/tv";
 
 export type EpisodeRowProgress = {
   current_time: number;
@@ -20,11 +21,15 @@ function DownloadControl({
   progress,
   onDownload,
   onDeleteDownload,
+  pressRef,
+  nextFocusRight,
 }: {
   status?: DownloadStatus;
   progress?: number;
   onDownload?: () => void;
   onDeleteDownload?: () => void;
+  pressRef?: Ref<View>;
+  nextFocusRight?: number;
 }) {
   if (status === "downloading" || status === "queued") {
     const pct = typeof progress === "number" && progress >= 0 ? `${Math.round(progress * 100)}%` : null;
@@ -37,7 +42,13 @@ function DownloadControl({
   }
   if (status === "completed") {
     return (
-      <Pressable onPress={onDeleteDownload} style={styles.action} accessibilityLabel="Remove download">
+      <Pressable
+        ref={pressRef}
+        nextFocusRight={nextFocusRight}
+        onPress={onDeleteDownload}
+        style={styles.action}
+        accessibilityLabel="Remove download"
+      >
         <Feather name="check-circle" size={20} color={colors.green} />
       </Pressable>
     );
@@ -45,6 +56,8 @@ function DownloadControl({
   const retry = status === "paused" || status === "failed";
   return (
     <Pressable
+      ref={pressRef}
+      nextFocusRight={nextFocusRight}
       onPress={onDownload}
       style={styles.action}
       accessibilityLabel={retry ? "Retry download" : "Download for offline"}
@@ -123,6 +136,16 @@ export function EpisodeRow({
       : TILE_GRADIENTS.unwatched;
   const titleText = parsed ? parsed.title || `Episode ${parsed.episode}` : fallbackLabel;
 
+  // D-pad right stops at the row's last button instead of dropping into a button on another row.
+  // Which button that is depends on what the row shows (an active download isn't focusable).
+  const showRestart = isInProgress && !!onRestart;
+  const showDownload = !!(onDownload || downloadStatus);
+  const downloadFocusable = showDownload && downloadStatus !== "downloading" && downloadStatus !== "queued";
+  const lastStop = downloadFocusable ? "download" : showRestart ? "restart" : "play";
+  const [playRef, playHandle] = useNativeHandle(lastStop === "play");
+  const [restartRef, restartHandle] = useNativeHandle(lastStop === "restart");
+  const [downloadRef, downloadHandle] = useNativeHandle(lastStop === "download");
+
   let metaText: string | null = null;
   if (progress && progress.duration > 0) {
     if (isInProgress) {
@@ -139,6 +162,8 @@ export function EpisodeRow({
   return (
     <View testID="episode-row" style={[styles.card, focused && styles.cardFocused, style]}>
       <Pressable
+        ref={playRef}
+        nextFocusRight={playHandle}
         onPress={onPlay}
         onFocus={() => {
           setFocused(true);
@@ -197,8 +222,10 @@ export function EpisodeRow({
         </View>
       </Pressable>
       <View style={styles.actions}>
-        {isInProgress && onRestart ? (
+        {showRestart ? (
           <Pressable
+            ref={restartRef}
+            nextFocusRight={restartHandle}
             onPress={onRestart}
             style={styles.action}
             accessibilityRole="button"
@@ -207,12 +234,14 @@ export function EpisodeRow({
             <Feather name="rotate-ccw" size={20} color={colors.text} />
           </Pressable>
         ) : null}
-        {onDownload || downloadStatus ? (
+        {showDownload ? (
           <DownloadControl
             status={downloadStatus}
             progress={downloadProgress}
             onDownload={onDownload}
             onDeleteDownload={onDeleteDownload}
+            pressRef={downloadRef}
+            nextFocusRight={downloadHandle}
           />
         ) : null}
       </View>

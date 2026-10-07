@@ -1,3 +1,9 @@
+// The test renderer has no native views, so stand in a fake native handle (42) for any view that asks.
+jest.mock("../../src/utils/tv", () => ({
+  ...jest.requireActual("../../src/utils/tv"),
+  useNativeHandle: (enabled = true) => [() => {}, enabled ? 42 : undefined],
+}));
+
 import React from "react";
 import { StyleSheet } from "react-native";
 import { fireEvent, render } from "@testing-library/react-native";
@@ -17,6 +23,47 @@ describe("EpisodeRow", () => {
     const { getByText } = render(<EpisodeRow parsed={untitled} fallbackLabel="-" onPlay={() => {}} />);
     expect(getByText("Season 1")).toBeTruthy();
     expect(getByText("Episode 1")).toBeTruthy();
+  });
+
+  describe("D-pad right stops at the row's last button", () => {
+    const inProgress = { current_time: 300, duration: 1400 };
+    const stopsRight = (node: any) => node.props.nextFocusRight === 42;
+
+    it("is the download button when there is one", () => {
+      const { getByLabelText } = render(
+        <EpisodeRow
+          parsed={parsed}
+          fallbackLabel="-"
+          progress={inProgress}
+          onPlay={() => {}}
+          onRestart={() => {}}
+          onDownload={() => {}}
+        />,
+      );
+      expect(stopsRight(getByLabelText("Download for offline"))).toBe(true);
+      expect(stopsRight(getByLabelText("Play from beginning"))).toBe(false);
+      expect(stopsRight(getByLabelText("Play Episode 2"))).toBe(false);
+    });
+
+    it("is restart while a download is running (the spinner isn't focusable)", () => {
+      const { getByLabelText } = render(
+        <EpisodeRow
+          parsed={parsed}
+          fallbackLabel="-"
+          progress={inProgress}
+          onPlay={() => {}}
+          onRestart={() => {}}
+          downloadStatus="downloading"
+        />,
+      );
+      expect(stopsRight(getByLabelText("Play from beginning"))).toBe(true);
+      expect(stopsRight(getByLabelText("Play Episode 2"))).toBe(false);
+    });
+
+    it("is the row itself when it has no buttons", () => {
+      const { getByLabelText } = render(<EpisodeRow parsed={parsed} fallbackLabel="-" onPlay={() => {}} />);
+      expect(stopsRight(getByLabelText("Play Episode 2"))).toBe(true);
+    });
   });
 
   it("lights the whole card up while the row has D-pad focus", () => {

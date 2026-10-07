@@ -1,3 +1,9 @@
+// The test renderer has no native views, so stand in a fake native handle (42) for any view that asks.
+jest.mock("../../src/utils/tv", () => ({
+  ...jest.requireActual("../../src/utils/tv"),
+  useNativeHandle: (enabled = true) => [() => {}, enabled ? 42 : undefined],
+}));
+
 import React from "react";
 import { FlatList, StyleSheet } from "react-native";
 import { fireEvent, render } from "@testing-library/react-native";
@@ -20,6 +26,12 @@ describe("TitleRail", () => {
     { name: "Inception", imagePath: null, pathToDir: "movies/Inception" },
     { name: "Arrival", imagePath: null, pathToDir: "movies/Arrival" },
   ];
+
+  it("stops D-pad right at the last card instead of letting it drop into another row", () => {
+    const { getByLabelText } = render(<TitleRail title="Featured" items={items} onSelect={() => {}} />);
+    expect(getByLabelText("Arrival").props.nextFocusRight).toBe(42);
+    expect(getByLabelText("Inception").props.nextFocusRight).toBeUndefined();
+  });
 
   it("turns the heading blue while a card in the row has focus", () => {
     const { getByText, getByLabelText } = render(<TitleRail title="Featured" items={items} onSelect={() => {}} />);

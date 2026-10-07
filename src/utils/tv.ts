@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { findNodeHandle, type View } from "react-native";
 
 /**
  * The `hasTVPreferredFocus` value for a view that should take D-pad focus while `wanted`.
@@ -20,4 +21,17 @@ export function useTVPreferredFocus(wanted = true): boolean {
     return () => cancelAnimationFrame(frame);
   }, [wanted]);
   return wanted && armed;
+}
+
+/**
+ * A callback ref plus that view's native handle, for Android's `nextFocus*` props (which take a
+ * handle, not a ref). The handle is undefined until the view mounts, or while `enabled` is false.
+ */
+export function useNativeHandle(enabled = true): [(node: View | null) => void, number | undefined] {
+  const [handle, setHandle] = useState<number>();
+  const ref = useCallback(
+    (node: View | null) => setHandle(enabled && node ? (findNodeHandle(node) ?? undefined) : undefined),
+    [enabled],
+  );
+  return [ref, handle];
 }

@@ -1,4 +1,5 @@
 import type React from "react";
+import { Platform } from "react-native";
 import { act, fireEvent, render as rtlRender } from "@testing-library/react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { FeaturedCarousel } from "../../src/components/FeaturedCarousel";
@@ -116,6 +117,17 @@ describe("FeaturedCarousel", () => {
       act(() => jest.advanceTimersByTime(50));
       expect(preferredPlaySlides(UNSAFE_root)).toEqual([]);
     });
+  });
+
+  it("keeps the slide dots out of the D-pad's path on a TV", () => {
+    const isTV = jest.spyOn(Platform, "isTV", "get").mockReturnValue(true);
+    const { UNSAFE_root } = render(<FeaturedCarousel items={items} height={400} onSelect={() => {}} />);
+    const dot = UNSAFE_root.find(
+      (node: any) => typeof node.type === "string" && node.props.accessibilityLabel === "Show Two",
+    );
+    expect(dot.props.focusable).toBe(false);
+    expect(dot.props.accessible).toBe(false);
+    isTV.mockRestore();
   });
 
   it("shows the active title's description once it loads", async () => {

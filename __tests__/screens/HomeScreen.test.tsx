@@ -1,3 +1,9 @@
+// The test renderer has no native views, so stand in a fake native handle (42) for any view that asks.
+jest.mock("../../src/utils/tv", () => ({
+  ...jest.requireActual("../../src/utils/tv"),
+  useNativeHandle: (enabled = true) => [() => {}, enabled ? 42 : undefined],
+}));
+
 const mockNavigate = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
@@ -128,6 +134,23 @@ describe("HomeScreen", () => {
     expect(await findByText("Reelscape")).toBeTruthy();
     fireEvent.press(getByText("TV Shows"));
     expect(mockNavigate).toHaveBeenCalledWith("Library", { type: "tv show", title: "TV Shows" });
+  });
+
+  it("on a TV, sends D-pad up from the hero to the header's first link", async () => {
+    mockWindow.current = { width: 960, height: 540, scale: 2, fontScale: 1 };
+    jest.spyOn(api, "getCategories").mockResolvedValue([
+      {
+        genre: "Newly Added",
+        titles: [{ name: "Fresh", imagePath: "/api/assets/fresh.jpg", pathToDir: "movies/Fresh" }],
+      },
+    ] as any);
+    jest.spyOn(api, "getContinueWatching").mockResolvedValue({ genre: "Continue", titles: [] });
+    jest.spyOn(api, "getWatchlist").mockResolvedValue({ genre: "Watchlist", titles: [] });
+    jest.spyOn(api, "getTitleDetails").mockReturnValue(new Promise(() => {}));
+    const { findByRole, getByRole } = renderWithQuery(<HomeScreen />);
+    const play = await findByRole("button", { name: "Play" });
+    expect(play.props.nextFocusUp).toBe(42);
+    expect(getByRole("button", { name: "More Info" }).props.nextFocusUp).toBe(42);
   });
 
   it("on a TV, keeps the header pinned and turns it solid once the page scrolls", async () => {

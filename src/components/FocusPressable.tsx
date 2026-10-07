@@ -12,6 +12,12 @@ import {
 export type FocusPressableProps = PressableProps & {
   /** Extra style while focused by a D-pad / keyboard (TV remote). Adds to the default ring. */
   focusStyle?: StyleProp<ViewStyle>;
+  // Android View props that Pressable passes through but doesn't declare: the native handle of the
+  // view the D-pad goes to in that direction, overriding Android's nearest-view guess.
+  nextFocusUp?: number;
+  nextFocusDown?: number;
+  nextFocusLeft?: number;
+  nextFocusRight?: number;
 };
 
 /**
