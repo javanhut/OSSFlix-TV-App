@@ -16,6 +16,8 @@ import type { TitleSummary } from "../types/api";
 import { TitleCard } from "./TitleCard";
 
 const FADE_WIDTH = 28;
+// Room around the cards for the focused card's scale-up and outline, which the list would clip.
+const FOCUS_GUTTER = 12;
 const EDGE_EPSILON = 1;
 
 export function TitleRail({
@@ -71,6 +73,7 @@ export function TitleRail({
           keyExtractor={(item) => item.pathToDir}
           renderItem={({ item }) => <TitleCard item={item} onPress={() => onSelect(item)} />}
           showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.listContent}
           onScroll={handleScroll}
           scrollEventThrottle={16}
           onContentSizeChange={handleContentSizeChange}
@@ -111,6 +114,10 @@ const styles = StyleSheet.create({
   },
   railWrapper: {
     position: "relative",
+    margin: -FOCUS_GUTTER,
+  },
+  listContent: {
+    padding: FOCUS_GUTTER,
   },
   fade: {
     position: "absolute",

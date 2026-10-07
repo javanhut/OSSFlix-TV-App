@@ -67,6 +67,53 @@ describe("TitleDetailsScreen", () => {
     expect(navigation.navigate).toHaveBeenCalledTimes(1);
   });
 
+  it("resumes the most recently watched episode, not the first in-progress one", async () => {
+    jest.spyOn(api, "getProgressForDir").mockResolvedValue([
+      {
+        video_src: "shows/Foo/foo_s1_ep1.mkv",
+        dir_path: "shows/Foo",
+        current_time: 258,
+        duration: 1420,
+        updated_at: "2026-10-05 20:00:00",
+      },
+      {
+        video_src: "shows/Foo/foo_s1_ep2.mkv",
+        dir_path: "shows/Foo",
+        current_time: 300,
+        duration: 1420,
+        updated_at: "2026-10-06 21:00:00",
+      },
+    ]);
+    const autoplayRoute = { ...route, params: { dirPath: "shows/Foo", autoplay: true } };
+    renderWithQuery(<TitleDetailsScreen navigation={navigation} route={autoplayRoute} />);
+    await waitFor(() =>
+      expect(navigation.navigate).toHaveBeenCalledWith(
+        "Player",
+        expect.objectContaining({ startIndex: 1, initialTime: 300 }),
+      ),
+    );
+  });
+
+  it("starts the next episode when the most recent one was watched to the credits", async () => {
+    jest.spyOn(api, "getProgressForDir").mockResolvedValue([
+      {
+        video_src: "shows/Foo/foo_s1_ep1.mkv",
+        dir_path: "shows/Foo",
+        current_time: 1332,
+        duration: 1420,
+        updated_at: "2026-10-06 21:00:00",
+      },
+    ]);
+    const autoplayRoute = { ...route, params: { dirPath: "shows/Foo", autoplay: true } };
+    renderWithQuery(<TitleDetailsScreen navigation={navigation} route={autoplayRoute} />);
+    await waitFor(() =>
+      expect(navigation.navigate).toHaveBeenCalledWith(
+        "Player",
+        expect.objectContaining({ startIndex: 1, initialTime: 0 }),
+      ),
+    );
+  });
+
   it("does not open the player without autoplay", async () => {
     const { findByText } = renderWithQuery(<TitleDetailsScreen navigation={navigation} route={route} />);
     await findByText("Play");

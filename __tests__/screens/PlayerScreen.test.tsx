@@ -211,6 +211,16 @@ describe("PlayerScreen — control buttons", () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
+  it("asks Android to focus play/pause once the controls are on screen", async () => {
+    const { UNSAFE_root } = renderPlayer();
+    await waitFor(() => expect((Video as any).lastProps).toBeDefined());
+    await waitFor(() => {
+      const preferred = UNSAFE_root.findAll((node: any) => node.props.hasTVPreferredFocus === true);
+      expect(preferred.length).toBeGreaterThan(0);
+      expect(preferred[0].findByProps({ accessibilityLabel: "Feather-pause" })).toBeTruthy();
+    });
+  });
+
   it("toggles play/pause", async () => {
     const { UNSAFE_root } = renderPlayer();
     await waitFor(() => expect((Video as any).lastProps).toBeDefined());
@@ -338,6 +348,18 @@ describe("PlayerScreen — next-episode countdown", () => {
     expect((Video as any).lastProps.source.uri).toContain("foo_s1_ep1.mkv");
   });
 
+  it("saves the outgoing episode as finished when Play Now advances", async () => {
+    const { findByText } = renderPlayer();
+    await advanceIntoOutro();
+    fireEvent.press(await findByText("Play Now"));
+    await waitFor(() =>
+      expect(api.saveProgress).toHaveBeenCalledWith(
+        expect.objectContaining({ video_src: "shows/Foo/foo_s1_ep1.mkv", current_time: 1800, duration: 1800 }),
+      ),
+    );
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+  });
+
   it("advances immediately when Play Now is pressed", async () => {
     const { findByText } = renderPlayer();
     await advanceIntoOutro();
@@ -391,6 +413,25 @@ describe("PlayerScreen — next-episode countdown", () => {
 });
 
 describe("PlayerScreen — persistence lifecycle", () => {
+  it("saves once when the player closes, not on every progress tick", async () => {
+    const { unmount } = renderPlayer();
+    await waitFor(() => expect((Video as any).lastProps).toBeDefined());
+    await act(async () => {
+      (Video as any).lastProps.onLoad({ duration: 1800 });
+      (Video as any).lastProps.onProgress({ currentTime: 50 });
+    });
+    await act(async () => {
+      (Video as any).lastProps.onProgress({ currentTime: 51 });
+    });
+    await act(async () => {
+      (Video as any).lastProps.onProgress({ currentTime: 52 });
+    });
+    expect(api.saveProgress).not.toHaveBeenCalled();
+    unmount();
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    expect(api.saveProgress).toHaveBeenCalledWith(expect.objectContaining({ current_time: 52, duration: 1800 }));
+  });
+
   it("persists progress when AppState transitions away from active", async () => {
     const listeners: Array<(s: string) => void> = [];
     const AppState = require("react-native").AppState;

@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import type { ParsedEpisode } from "../utils/episodeNaming";
 import type { DownloadStatus } from "../types/downloads";
+import { isProgressInProgress, isProgressWatched } from "../utils/progress";
 
 export type EpisodeRowProgress = {
   current_time: number;
@@ -82,14 +83,16 @@ export function EpisodeRow({
   onDownload?: () => void;
   onDeleteDownload?: () => void;
 }) {
-  const isInProgress =
-    !!progress &&
-    progress.current_time > 0 &&
-    (progress.duration === 0 || progress.current_time < progress.duration - 5);
-  const isWatched = !!progress && progress.duration > 0 && progress.current_time >= progress.duration - 5;
+  const isInProgress = isProgressInProgress(progress);
+  const isWatched = isProgressWatched(progress);
   const pct = progress && progress.duration > 0 ? Math.min(100, (progress.current_time / progress.duration) * 100) : 0;
 
-  const badgeText = parsed ? `Episode ${parsed.episode}` : "Movie";
+  // Untitled episodes show "Episode N" as the title, so the badge carries the season instead.
+  const badgeText = parsed
+    ? parsed.title
+      ? `Episode ${parsed.episode}`
+      : `S${parsed.season} E${parsed.episode}`
+    : "Movie";
   const titleText = parsed ? parsed.title || `Episode ${parsed.episode}` : fallbackLabel;
 
   let metaText: string | null = null;
@@ -122,6 +125,16 @@ export function EpisodeRow({
           {metaText ? <Text style={styles.meta}>{metaText}</Text> : null}
         </View>
         <View style={styles.rightCluster}>
+          {isInProgress && onRestart ? (
+            <Pressable
+              onPress={onRestart}
+              style={({ pressed }) => [styles.restart, pressed && styles.restartPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Play from beginning"
+            >
+              <Feather name="rotate-ccw" size={14} color={colors.text} />
+            </Pressable>
+          ) : null}
           {onDownload || downloadStatus ? (
             <DownloadControl
               status={downloadStatus}
@@ -133,16 +146,6 @@ export function EpisodeRow({
           <Feather name="play" size={16} color={colors.accentText} style={styles.playIcon} />
         </View>
       </Pressable>
-      {isInProgress && onRestart ? (
-        <Pressable
-          onPress={onRestart}
-          style={({ pressed }) => [styles.restart, pressed && styles.restartPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Play from beginning"
-        >
-          <Feather name="rotate-ccw" size={14} color={colors.text} />
-        </Pressable>
-      ) : null}
       {pct > 0 ? (
         <View style={styles.progressTrack} pointerEvents="none">
           <View style={[styles.progressFill, { width: `${pct}%` }, isWatched && styles.progressFillComplete]} />
@@ -248,12 +251,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   restart: {
-    position: "absolute",
-    top: 10,
-    right: 62,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: "rgba(10,15,28,0.9)",
     borderWidth: 1,
     borderColor: colors.border,

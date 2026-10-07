@@ -1,5 +1,5 @@
-import { type ComponentProps, useRef } from "react";
-import { type StyleProp, StyleSheet, Text, type View, type ViewStyle } from "react-native";
+import type { ComponentProps } from "react";
+import { type StyleProp, StyleSheet, Text, type ViewStyle } from "react-native";
 import { Pressable } from "./FocusPressable";
 import { Feather } from "@expo/vector-icons";
 
@@ -32,15 +32,14 @@ export function PlayButton({
   testID,
   preferredFocus,
 }: ButtonProps) {
-  const ref = useRef<View>(null);
-  useTVPreferredFocus(ref, preferredFocus);
+  const hasTVPreferredFocus = useTVPreferredFocus(!!preferredFocus);
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       testID={testID}
       accessibilityRole="button"
-      ref={ref}
+      hasTVPreferredFocus={hasTVPreferredFocus}
       style={({ pressed }) => [
         styles.base,
         large && styles.large,
@@ -58,15 +57,14 @@ export function PlayButton({
 
 /** Translucent glass action (web `.oss-btn-secondary`). */
 export function GlassButton({ label, onPress, icon, disabled, large, style, testID, preferredFocus }: ButtonProps) {
-  const ref = useRef<View>(null);
-  useTVPreferredFocus(ref, preferredFocus);
+  const hasTVPreferredFocus = useTVPreferredFocus(!!preferredFocus);
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       testID={testID}
       accessibilityRole="button"
-      ref={ref}
+      hasTVPreferredFocus={hasTVPreferredFocus}
       style={({ pressed }) => [
         styles.base,
         large && styles.large,
@@ -84,15 +82,14 @@ export function GlassButton({ label, onPress, icon, disabled, large, style, test
 
 /** Solid accent action (web `.oss-btn-primary`). */
 export function PrimaryButton({ label, onPress, icon, disabled, large, style, testID, preferredFocus }: ButtonProps) {
-  const ref = useRef<View>(null);
-  useTVPreferredFocus(ref, preferredFocus);
+  const hasTVPreferredFocus = useTVPreferredFocus(!!preferredFocus);
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       testID={testID}
       accessibilityRole="button"
-      ref={ref}
+      hasTVPreferredFocus={hasTVPreferredFocus}
       style={({ pressed }) => [
         styles.base,
         large && styles.large,

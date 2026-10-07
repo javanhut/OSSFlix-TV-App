@@ -26,6 +26,7 @@ import {
   titleFromStem,
   type ParsedEpisode,
 } from "../utils/episodeNaming";
+import { isProgressInProgress, isProgressWatched } from "../utils/progress";
 
 type AudioSelection = AudioVariant | "both";
 import { formatTitleType } from "../utils/titleType";
@@ -228,18 +229,25 @@ export function TitleDetailsScreen({ route, navigation }: Props) {
 
   const playTarget = useMemo(() => {
     if (!filteredVideos.length) return null;
-    const progressEntries = progressQuery.data || [];
-    const resumeEntry = progressEntries.find(
-      (entry) => entry.current_time > 0 && (entry.duration === 0 || entry.current_time < entry.duration - 5),
-    );
-    if (resumeEntry) {
-      const startIndex = filteredVideos.indexOf(resumeEntry.video_src);
-      if (startIndex >= 0) {
-        return { startIndex, initialTime: resumeEntry.current_time };
+    // Most recently watched first (sort is stable, so entries without a timestamp keep server order).
+    const entries = (progressQuery.data || [])
+      .filter((entry) => filteredVideos.includes(entry.video_src))
+      .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
+    const latest = entries[0];
+    if (latest && isProgressWatched(latest)) {
+      // Finished the last thing watched: move on to the episode after it.
+      const nextIndex = filteredVideos.indexOf(latest.video_src) + 1;
+      if (nextIndex < filteredVideos.length) {
+        const next = progressByVideo.get(filteredVideos[nextIndex]);
+        return { startIndex: nextIndex, initialTime: isProgressInProgress(next) ? (next?.current_time ?? 0) : 0 };
       }
     }
+    const resumeEntry = entries.find((entry) => isProgressInProgress(entry));
+    if (resumeEntry) {
+      return { startIndex: filteredVideos.indexOf(resumeEntry.video_src), initialTime: resumeEntry.current_time };
+    }
     return { startIndex: 0, initialTime: 0 };
-  }, [filteredVideos, progressQuery.data]);
+  }, [filteredVideos, progressByVideo, progressQuery.data]);
 
   // Hero "Play" lands here with autoplay; start playback once the resume point is known.
   const autoplayedRef = useRef(false);

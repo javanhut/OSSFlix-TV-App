@@ -101,6 +101,7 @@ function MainTabs() {
   const insets = useSafeAreaInsets();
   const iconSize = 24;
   const railWidth = 56;
+  const tabFocusInset = 6;
 
   // TV layout: a slim icon rail on the left, reached with D-pad left.
   const tabBarStyle = {
@@ -129,10 +130,12 @@ function MainTabs() {
         tabBarInactiveBackgroundColor: "transparent",
         tabBarShowLabel: false,
         tabBarStyle,
+        // Narrower than the rail so the focus outline isn't clipped by its edges.
         tabBarItemStyle: {
           paddingVertical: 10,
           height: 56,
-          width: railWidth,
+          width: railWidth - 2 * tabFocusInset,
+          marginHorizontal: tabFocusInset,
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: "transparent",

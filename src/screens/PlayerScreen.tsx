@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, StyleSheet, Text, View } from "react-native";
+import { AppState, PixelRatio, StyleSheet, Text, View } from "react-native";
 import { Pressable } from "../components/FocusPressable";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import Video, { SelectedTrackType, TextTrackType } from "react-native-video";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -58,6 +58,7 @@ function normalizeSubtitleLanguage(language: string): "en" | "es" | "fr" | "de" 
 
 export function PlayerScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { dirPath, title, videos, startIndex, initialTime, subtitles, offline, offlineMeta } = route.params;
 
   const playerRef = useRef<any>(null);
@@ -72,13 +73,13 @@ export function PlayerScreen({ route, navigation }: Props) {
   const [selectedSubtitle, setSelectedSubtitle] = useState<number | null>(null);
   const [paused, setPaused] = useState(false);
   const [showControls, setShowControls] = useState(true);
-  const playButtonRef = useRef<View>(null);
   // Put the remote on play/pause whenever the controls appear.
-  useTVPreferredFocus(playButtonRef, showControls);
+  const playButtonPreferredFocus = useTVPreferredFocus(showControls);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [skipFeedback, setSkipFeedback] = useState<SkipFeedback>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [bottomBarHeight, setBottomBarHeight] = useState(0);
 
   const currentVideo = videos[currentIndex];
   const currentOfflineMeta = offline ? offlineMeta?.[currentIndex] : undefined;
@@ -119,6 +120,15 @@ export function PlayerScreen({ route, navigation }: Props) {
   const totalDuration = duration || (offline ? currentOfflineMeta?.duration : probeQuery.data?.duration) || 0;
   const displayTime = currentTime;
   const playedPercent = totalDuration > 0 ? clamp((displayTime / totalDuration) * 100, 0, 100) : 0;
+
+  // Latest position for the save paths, so they don't re-run on every progress tick. Updated after
+  // each commit, so an episode-switch cleanup still sees the outgoing episode's position.
+  const positionRef = useRef({ time: initialTime, duration: 0 });
+  useEffect(() => {
+    positionRef.current = { time: currentTime, duration: totalDuration };
+  });
+  // Set when playback rolls into the next episode (or ends), so the outgoing one saves as finished.
+  const finishedRef = useRef(false);
 
   const persistProgress = useCallback(
     async (time: number, knownDuration: number) => {
@@ -238,23 +248,24 @@ export function PlayerScreen({ route, navigation }: Props) {
     setCountdown(null);
   }, []);
 
+  const finishAndAdvance = useCallback(() => {
+    finishedRef.current = true;
+    goToNext();
+  }, [goToNext]);
+
   const startCountdown = useCallback(() => {
     if (countdownIntervalRef.current) return;
     setCountdown(COUNTDOWN_SECONDS);
     countdownIntervalRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev === null || prev <= 1) {
-          if (countdownIntervalRef.current) {
-            clearInterval(countdownIntervalRef.current);
-            countdownIntervalRef.current = null;
-          }
-          goToNext();
-          return null;
-        }
-        return prev - 1;
-      });
+      setCountdown((prev) => (prev === null ? null : prev - 1));
     }, 1000);
-  }, [goToNext]);
+  }, []);
+
+  useEffect(() => {
+    if (countdown === null || countdown > 0) return;
+    cancelCountdown();
+    finishAndAdvance();
+  }, [countdown, cancelCountdown, finishAndAdvance]);
 
   const handleCountdownCancel = useCallback(() => {
     countdownCancelledRef.current = true;
@@ -263,8 +274,8 @@ export function PlayerScreen({ route, navigation }: Props) {
 
   const handleCountdownPlayNow = useCallback(() => {
     cancelCountdown();
-    goToNext();
-  }, [cancelCountdown, goToNext]);
+    finishAndAdvance();
+  }, [cancelCountdown, finishAndAdvance]);
 
   useEffect(() => {
     if (currentIndex === startIndex) {
@@ -286,25 +297,33 @@ export function PlayerScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      void persistProgress(currentTime, totalDuration);
+      void persistProgress(positionRef.current.time, positionRef.current.duration);
     }, 15000);
     return () => clearInterval(interval);
-  }, [currentTime, persistProgress, totalDuration]);
+  }, [persistProgress]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state !== "active") {
-        void persistProgress(currentTime, totalDuration);
+        void persistProgress(positionRef.current.time, positionRef.current.duration);
       }
     });
     return () => subscription.remove();
-  }, [currentTime, persistProgress, totalDuration]);
+  }, [persistProgress]);
 
+  // Leaving an episode (switching or closing the player): save where it stopped, then refresh the
+  // screens behind the player so their progress isn't stale.
   useEffect(() => {
     return () => {
-      void persistProgress(currentTime, totalDuration);
+      const { time, duration } = positionRef.current;
+      const finished = finishedRef.current && duration > 0;
+      finishedRef.current = false;
+      void persistProgress(finished ? duration : time, duration).then(() => {
+        void queryClient.invalidateQueries({ queryKey: ["progress-dir", dirPath] });
+        void queryClient.invalidateQueries({ queryKey: ["continue-watching"] });
+      });
     };
-  }, [currentTime, persistProgress, totalDuration]);
+  }, [dirPath, persistProgress, queryClient]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: currentVideo is the identity trigger that re-runs this reset when playback switches.
   useEffect(() => {
@@ -422,6 +441,10 @@ export function PlayerScreen({ route, navigation }: Props) {
             ? { type: SelectedTrackType.INDEX, value: selectedSubtitle }
             : { type: SelectedTrackType.DISABLED }
         }
+        // Lift subtitles above the controls bar while it's showing (the native padding is in px).
+        subtitleStyle={{
+          paddingBottom: showControls ? PixelRatio.getPixelSizeForLayoutSize(bottomBarHeight) : 0,
+        }}
         controls={false}
         resizeMode="contain"
         style={styles.video}
@@ -440,11 +463,11 @@ export function PlayerScreen({ route, navigation }: Props) {
           setCurrentTime(event.currentTime);
         }}
         onEnd={() => {
-          void persistProgress(totalDuration, totalDuration);
           if (hasNext) {
-            goToNext();
+            finishAndAdvance();
             return;
           }
+          finishedRef.current = true;
           navigation.goBack();
         }}
       />
@@ -503,7 +526,11 @@ export function PlayerScreen({ route, navigation }: Props) {
               <View style={styles.sideSpacer} />
             )}
 
-            <Pressable ref={playButtonRef} onPress={togglePlayPause} style={styles.playButton}>
+            <Pressable
+              hasTVPreferredFocus={playButtonPreferredFocus}
+              onPress={togglePlayPause}
+              style={styles.playButton}
+            >
               <Feather name={paused ? "play" : "pause"} size={30} color={colors.text} />
             </Pressable>
 
@@ -525,6 +552,7 @@ export function PlayerScreen({ route, navigation }: Props) {
           <LinearGradient
             colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.82)"]}
             style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 18) }]}
+            onLayout={(event) => setBottomBarHeight(event.nativeEvent.layout.height)}
           >
             <View style={styles.progressMeta}>
               <Text style={styles.timeLabel}>{formatTime(displayTime)}</Text>
@@ -651,7 +679,8 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: "rgba(255,255,255,0.16)",
+    // Mostly opaque: a see-through fill lets bright video detail look like marks beside the icon.
+    backgroundColor: "rgba(10,15,28,0.72)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.28)",
     alignItems: "center",
@@ -661,7 +690,7 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(10,15,28,0.72)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
     alignItems: "center",

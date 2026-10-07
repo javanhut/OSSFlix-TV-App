@@ -11,6 +11,27 @@ describe("EpisodeRow", () => {
     expect(getByText("The Bank Job")).toBeTruthy();
   });
 
+  it("shows the season in the badge for an untitled episode, so it doesn't repeat the title", () => {
+    const untitled = { season: 1, episode: 1, title: "", ext: "mkv" };
+    const { getByText } = render(<EpisodeRow parsed={untitled} fallbackLabel="-" onPlay={() => {}} />);
+    expect(getByText("S1 E1")).toBeTruthy();
+    expect(getByText("Episode 1")).toBeTruthy();
+  });
+
+  it("treats an episode stopped in the credits (>= 90%) as watched", () => {
+    const { getByText, queryByLabelText } = render(
+      <EpisodeRow
+        parsed={parsed}
+        fallbackLabel="-"
+        progress={{ current_time: 1332, duration: 1420 }}
+        onPlay={() => {}}
+        onRestart={() => {}}
+      />,
+    );
+    expect(getByText("23:40")).toBeTruthy();
+    expect(queryByLabelText("Play from beginning")).toBeNull();
+  });
+
   it('renders "Movie" badge and fallback label when parsed is null', () => {
     const { getByText } = render(<EpisodeRow parsed={null} fallbackLabel="Random Clip" onPlay={() => {}} />);
     expect(getByText("Movie")).toBeTruthy();

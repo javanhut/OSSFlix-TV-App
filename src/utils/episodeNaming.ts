@@ -82,6 +82,12 @@ export function formatEpisodeLabel(p: ParsedEpisode): string {
   return p.title ? `${base} - ${p.title}` : base;
 }
 
+/** "Yaseinolastbossgaarawareta01" / "My Show - 01": a release name ending in the episode number, not a title. */
+function isShowNamePlusNumber(stem: string, episode: number): boolean {
+  const match = stem.match(/(?:^|\D)(\d+)$/);
+  return !!match && Number(match[1]) === episode;
+}
+
 /**
  * Parse any of these layouts (relative path inside the title directory):
  *   A: "s1/ep1/pilot.mkv"                 → S1 E1 - Pilot
@@ -135,6 +141,8 @@ export function parseEpisodePath(relPath: string): ParsedEpisode | null {
   let title: string;
   if (combined) {
     title = titleFromStem(titleRemnant);
+  } else if (isShowNamePlusNumber(stem, episode)) {
+    title = "";
   } else {
     title = titleFromStem(stem);
   }
