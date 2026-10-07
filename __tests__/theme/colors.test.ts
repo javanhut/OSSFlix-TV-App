@@ -27,6 +27,7 @@ describe("theme/colors", () => {
     "textDim",
     "play",
     "playPressed",
+    "playFocused",
     "playText",
     "green",
   ];

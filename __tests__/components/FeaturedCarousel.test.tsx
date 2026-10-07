@@ -79,4 +79,33 @@ describe("FeaturedCarousel", () => {
     const { findByText } = render(<FeaturedCarousel items={items} height={400} onSelect={() => {}} />);
     expect(await findByText("A great film.")).toBeTruthy();
   });
+
+  describe("on a wide (TV) stage", () => {
+    const layout = (width: number) => ({ nativeEvent: { layout: { width, height: 400, x: 0, y: 0 } } });
+
+    it("floats the sharp poster over a blurred backdrop, like the web hero", () => {
+      const { getByTestId, getAllByTestId } = render(
+        <FeaturedCarousel items={items} height={400} onSelect={() => {}} />,
+      );
+      fireEvent(getByTestId("featured-carousel"), "layout", layout(960));
+      expect(getAllByTestId("hero-poster")).toHaveLength(items.length);
+    });
+
+    it("shows wide art full-bleed once it loads", () => {
+      const { getByTestId, getAllByTestId, queryAllByTestId } = render(
+        <FeaturedCarousel items={[items[0]]} height={400} onSelect={() => {}} />,
+      );
+      fireEvent(getByTestId("featured-carousel"), "layout", layout(960));
+      fireEvent(getAllByTestId("hero-poster")[0], "load", { nativeEvent: { source: { width: 1920, height: 1080 } } });
+      expect(queryAllByTestId("hero-poster")).toHaveLength(0);
+    });
+
+    it("keeps phones (narrow stage) on the plain full-bleed image", () => {
+      const { getByTestId, queryAllByTestId } = render(
+        <FeaturedCarousel items={items} height={400} onSelect={() => {}} />,
+      );
+      fireEvent(getByTestId("featured-carousel"), "layout", layout(360));
+      expect(queryAllByTestId("hero-poster")).toHaveLength(0);
+    });
+  });
 });

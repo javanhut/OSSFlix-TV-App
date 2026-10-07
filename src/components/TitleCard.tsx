@@ -1,4 +1,5 @@
-import { Image, type StyleProp, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import { memo, useRef, useState } from "react";
+import { Animated, Easing, Image, type StyleProp, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { Pressable } from "./FocusPressable";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -7,64 +8,115 @@ import { colors } from "../theme/colors";
 import { fonts } from "../theme/typography";
 import type { TitleSummary } from "../types/api";
 
-/** Poster card with the title overlaid on a bottom scrim (web `.oss-card`). */
-export function TitleCard({
+export const TITLE_CARD_WIDTH = 140;
+export const TITLE_CARD_GAP = 14;
+const FOCUS_SCALE = 1.06;
+const FOCUS_ANIM_MS = 140;
+
+/**
+ * Poster card with the title overlaid on a bottom scrim (web `.oss-card`). Focus eases the card
+ * up (native-driven, so it stays smooth while the row scrolls) and adds the blue ring.
+ */
+export const TitleCard = memo(function TitleCard({
   item,
   onPress,
-  width = 140,
+  width = TITLE_CARD_WIDTH,
   style,
+  onFocus,
+  onBlur,
 }: {
   item: TitleSummary;
-  onPress: () => void;
+  onPress: (item: TitleSummary) => void;
   width?: number;
   style?: StyleProp<ViewStyle>;
+  onFocus?: (item: TitleSummary) => void;
+  onBlur?: () => void;
 }) {
   const imageUrl = resolveAssetUrl(item.imagePath);
   const progress = typeof item.progressPct === "number" ? Math.max(0, Math.min(100, item.progressPct)) : 0;
+  const [focused, setFocused] = useState(false);
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const animateTo = (toValue: number) =>
+    Animated.timing(scale, {
+      toValue,
+      duration: FOCUS_ANIM_MS,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onPress(item)}
       accessibilityRole="button"
       accessibilityLabel={item.name}
-      style={({ pressed }) => [styles.card, { width }, style, pressed && styles.cardPressed]}
-      focusStyle={styles.cardFocused}
+      style={[styles.slot, { width }, style]}
+      focusStyle={styles.noOutline}
+      onFocus={() => {
+        setFocused(true);
+        animateTo(FOCUS_SCALE);
+        onFocus?.(item);
+      }}
+      onBlur={() => {
+        setFocused(false);
+        animateTo(1);
+        onBlur?.();
+      }}
     >
-      {imageUrl ? (
-        <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="cover" />
-      ) : (
-        <View style={[styles.image, styles.placeholder]} />
+      {({ pressed }) => (
+        <Animated.View
+          style={[
+            styles.card,
+            focused && styles.cardFocused,
+            pressed && styles.cardPressed,
+            { transform: [{ scale }] },
+          ]}
+        >
+          {imageUrl ? (
+            <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="cover" />
+          ) : (
+            <View style={[styles.image, styles.placeholder]} />
+          )}
+          <LinearGradient pointerEvents="none" colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.9)"]} style={styles.scrim} />
+          <Text style={styles.title} numberOfLines={2}>
+            {item.name}
+          </Text>
+          {progress > 0 ? (
+            <View style={styles.progressTrack} pointerEvents="none" testID="title-card-progress">
+              <View style={[styles.progressFill, { width: `${progress}%` }]} testID="title-card-progress-fill" />
+            </View>
+          ) : null}
+        </Animated.View>
       )}
-      <LinearGradient pointerEvents="none" colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.9)"]} style={styles.scrim} />
-      <Text style={styles.title} numberOfLines={2}>
-        {item.name}
-      </Text>
-      {progress > 0 ? (
-        <View style={styles.progressTrack} pointerEvents="none" testID="title-card-progress">
-          <View style={[styles.progressFill, { width: `${progress}%` }]} testID="title-card-progress-fill" />
-        </View>
-      ) : null}
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
-  card: {
+  slot: {
     aspectRatio: 2 / 3,
-    marginRight: 12,
+    marginRight: TITLE_CARD_GAP,
+  },
+  // The ring lives on the animated card (so it scales with it), not as the Pressable's outline.
+  noOutline: {
+    outlineWidth: 0,
+  },
+  card: {
+    flex: 1,
     borderRadius: 10,
     overflow: "hidden",
     backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.05)",
+    boxShadow: "0 6px 18px rgba(0,0,0,0.5)",
   },
+  // The web card's hover lift, plus the TV blue ring so focus reads from across the room.
   cardFocused: {
-    transform: [{ scale: 1.06 }],
-    borderColor: "rgba(255,255,255,0.9)",
+    borderColor: "#60a5fa",
+    boxShadow: "0 0 0 2px #60a5fa, 0 0 24px 4px rgba(59,130,246,0.45), 0 18px 40px rgba(0,0,0,0.7)",
   },
   cardPressed: {
     opacity: 0.85,
-    transform: [{ scale: 0.97 }],
   },
   image: {
     ...StyleSheet.absoluteFill,

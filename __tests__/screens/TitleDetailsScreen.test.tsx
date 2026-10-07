@@ -1,5 +1,14 @@
 import React from "react";
-import { Alert } from "react-native";
+const mockWindow = { current: null as null | { width: number; height: number; scale: number; fontScale: number } };
+jest.mock("react-native/Libraries/Utilities/useWindowDimensions", () => {
+  const actual = jest.requireActual("react-native/Libraries/Utilities/useWindowDimensions");
+  return {
+    __esModule: true,
+    default: () => mockWindow.current ?? actual.default(),
+  };
+});
+
+import { Alert, ScrollView, StyleSheet } from "react-native";
 import { act, fireEvent, waitFor } from "@testing-library/react-native";
 import { TitleDetailsScreen } from "../../src/screens/TitleDetailsScreen";
 import { api } from "../../src/api/client";
@@ -45,6 +54,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  mockWindow.current = null;
   jest.restoreAllMocks();
 });
 
@@ -112,6 +122,45 @@ describe("TitleDetailsScreen", () => {
         expect.objectContaining({ startIndex: 1, initialTime: 0 }),
       ),
     );
+  });
+
+  it("on a TV, sizes episode rows so four fit in the scrolling list", async () => {
+    mockWindow.current = { width: 960, height: 540, scale: 2, fontScale: 1 };
+    const { findAllByTestId, getByTestId } = renderWithQuery(
+      <TitleDetailsScreen navigation={navigation} route={route} />,
+    );
+    await findAllByTestId("episode-row");
+    fireEvent(getByTestId("episode-scroller"), "layout", { nativeEvent: { layout: { height: 400 } } });
+    const rows = await findAllByTestId("episode-row");
+    // (400 - 2 * 16 inset - 3 * 10 gap) / 4
+    expect(StyleSheet.flatten(rows[0].props.style).height).toBe(84.5);
+  });
+
+  it("on a TV, glides the episode list to keep the focused episode in the second slot", async () => {
+    mockWindow.current = { width: 960, height: 540, scale: 2, fontScale: 1 };
+    const scrollSpy = jest.spyOn(ScrollView.prototype, "scrollTo").mockImplementation(() => {});
+    const videos = [1, 2, 3, 4, 5, 6].map((n) => `shows/Foo/foo_s1_ep${n}.mkv`);
+    jest.spyOn(api, "getTitleDetails").mockResolvedValue({ ...baseDetails, videos } as any);
+    const { findAllByTestId, getByTestId, getByLabelText } = renderWithQuery(
+      <TitleDetailsScreen navigation={navigation} route={route} />,
+    );
+    await findAllByTestId("episode-row");
+    fireEvent(getByTestId("episode-scroller"), "layout", { nativeEvent: { layout: { height: 400 } } });
+    await findAllByTestId("episode-row");
+    fireEvent(getByLabelText("Play Episode 4"), "focus");
+    // Row height 84.5 + 10 gap; episode 4 (index 3) lands in slot 1.
+    expect(scrollSpy).toHaveBeenCalledWith({ y: 2 * 94.5, animated: true });
+  });
+
+  it("on a TV, shows the title over the banner with its own back button", async () => {
+    mockWindow.current = { width: 960, height: 540, scale: 2, fontScale: 1 };
+    const { findByRole, getByLabelText, getByText } = renderWithQuery(
+      <TitleDetailsScreen navigation={navigation} route={route} />,
+    );
+    expect(await findByRole("header", { name: "Foo" })).toBeTruthy();
+    expect(getByText("TV Show  ·  Drama")).toBeTruthy();
+    fireEvent.press(getByLabelText("Go back"));
+    expect(navigation.goBack).toHaveBeenCalledTimes(1);
   });
 
   it("does not open the player without autoplay", async () => {

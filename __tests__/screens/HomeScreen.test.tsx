@@ -4,7 +4,14 @@ jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
 }));
 
+const mockWindow = { current: null as null | { width: number; height: number; scale: number; fontScale: number } };
+jest.mock("react-native/Libraries/Utilities/useWindowDimensions", () => {
+  const actual = jest.requireActual("react-native/Libraries/Utilities/useWindowDimensions");
+  return { __esModule: true, default: () => mockWindow.current ?? actual.default() };
+});
+
 import React from "react";
+import { StyleSheet } from "react-native";
 import { fireEvent } from "@testing-library/react-native";
 import { HomeScreen } from "../../src/screens/HomeScreen";
 import { api } from "../../src/api/client";
@@ -23,6 +30,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  mockWindow.current = null;
   jest.restoreAllMocks();
 });
 
@@ -109,6 +117,32 @@ describe("HomeScreen", () => {
     const { findByText } = renderWithQuery(<HomeScreen />);
     fireEvent.press(await findByText("My List"));
     expect(mockNavigate).toHaveBeenCalledWith("Watchlist");
+  });
+
+  it("on a TV, puts the section links in a top nav bar like the website", async () => {
+    mockWindow.current = { width: 960, height: 540, scale: 2, fontScale: 1 };
+    jest.spyOn(api, "getCategories").mockResolvedValue([]);
+    jest.spyOn(api, "getContinueWatching").mockResolvedValue({ genre: "Continue", titles: [] });
+    jest.spyOn(api, "getWatchlist").mockResolvedValue({ genre: "Watchlist", titles: [] });
+    const { findByText, getByText } = renderWithQuery(<HomeScreen />);
+    expect(await findByText("Reelscape")).toBeTruthy();
+    fireEvent.press(getByText("TV Shows"));
+    expect(mockNavigate).toHaveBeenCalledWith("Library", { type: "tv show", title: "TV Shows" });
+  });
+
+  it("on a TV, keeps the header pinned and turns it solid once the page scrolls", async () => {
+    mockWindow.current = { width: 960, height: 540, scale: 2, fontScale: 1 };
+    jest.spyOn(api, "getCategories").mockResolvedValue([]);
+    jest.spyOn(api, "getContinueWatching").mockResolvedValue({ genre: "Continue", titles: [] });
+    jest.spyOn(api, "getWatchlist").mockResolvedValue({ genre: "Watchlist", titles: [] });
+    const { findByTestId, getByTestId } = renderWithQuery(<HomeScreen />);
+    const background = () => StyleSheet.flatten(getByTestId("tv-header").props.style).backgroundColor;
+    await findByTestId("tv-header");
+    expect(background()).toBeUndefined();
+    fireEvent.scroll(getByTestId("home-scroll"), { nativeEvent: { contentOffset: { x: 0, y: 300 } } });
+    expect(background()).toBe("rgba(6,12,30,0.92)");
+    fireEvent.scroll(getByTestId("home-scroll"), { nativeEvent: { contentOffset: { x: 0, y: 0 } } });
+    expect(background()).toBeUndefined();
   });
 
   it("renders the empty state when there are no categories", async () => {

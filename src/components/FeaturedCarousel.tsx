@@ -7,22 +7,60 @@ import {
   type NativeSyntheticEvent,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Pressable } from "./FocusPressable";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 
 import { api, resolveAssetUrl } from "../api/client";
 import { brandGradient, colors } from "../theme/colors";
+import { focusGlow } from "../theme/focus";
 import { fonts } from "../theme/typography";
 import type { TitleSummary } from "../types/api";
 import { GlassButton, PlayButton } from "./Buttons";
 import { SCREEN_GUTTER } from "./PageHero";
 
 const AUTO_ADVANCE_MS = 8000;
+// Like the web hero: art narrower than this (a poster) gets a blurred backdrop with the sharp poster
+// floating on the right, instead of being magnified to fill a wide stage.
+const PORTRAIT_MAX_ASPECT = 1.3;
 
-function HeroDescription({ dirPath }: { dirPath: string }) {
+/** Slide artwork. `wideStage` (TV/landscape) uses the web's poster treatment for portrait art. */
+function HeroArt({ uri, wideStage, height }: { uri: string | null; wideStage: boolean; height: number }) {
+  const [measured, setMeasured] = useState<{ uri: string; aspect: number } | null>(null);
+  if (!uri) return <View style={[styles.image, styles.imageFallback]} />;
+  const aspect = measured && measured.uri === uri ? measured.aspect : null;
+  // Library art is almost always a poster, so assume that until the image says otherwise.
+  const portrait = aspect == null || aspect < PORTRAIT_MAX_ASPECT;
+  const onLoad = (event: { nativeEvent: { source: { width: number; height: number } } }) => {
+    const { width: w, height: h } = event.nativeEvent.source;
+    if (w > 0 && h > 0) setMeasured({ uri, aspect: w / h });
+  };
+  if (!wideStage || !portrait) {
+    return <Image source={{ uri }} style={styles.image} resizeMode="cover" onLoad={onLoad} />;
+  }
+  const posterTop = 64 + height * 0.05;
+  const posterHeight = height * 0.86 - posterTop;
+  return (
+    <>
+      <Image source={{ uri }} style={styles.image} resizeMode="cover" blurRadius={30} />
+      {/* Stands in for the web's brightness(.55) on the blurred backdrop. */}
+      <View style={[styles.image, styles.backdropDim]} />
+      <Image
+        testID="hero-poster"
+        source={{ uri }}
+        style={[styles.poster, { top: posterTop, height: posterHeight, width: (posterHeight * 2) / 3 }]}
+        resizeMode="cover"
+        onLoad={onLoad}
+      />
+    </>
+  );
+}
+
+function HeroDescription({ dirPath, lines }: { dirPath: string; lines: number }) {
   // Shares the cache with TitleDetailsScreen, so opening the title afterwards is instant.
   const query = useQuery({
     queryKey: ["title-details", dirPath],
@@ -31,7 +69,7 @@ function HeroDescription({ dirPath }: { dirPath: string }) {
   });
   if (!query.data?.description) return null;
   return (
-    <Text style={styles.description} numberOfLines={3}>
+    <Text style={styles.description} numberOfLines={lines}>
       {query.data.description}
     </Text>
   );
@@ -43,12 +81,16 @@ export function FeaturedCarousel({
   onSelect,
   onPlay,
   height,
+  onFocus,
 }: {
   items: TitleSummary[];
   onSelect: (item: TitleSummary) => void;
   onPlay?: (item: TitleSummary) => void;
   height: number;
+  /** A hero button got D-pad focus (the home screen scrolls back to the top). */
+  onFocus?: () => void;
 }) {
+  const screen = useWindowDimensions();
   const [activeIndex, setActiveIndex] = useState(0);
   const [slideWidth, setSlideWidth] = useState(0);
   const listRef = useRef<FlatList<TitleSummary>>(null);
@@ -92,8 +134,13 @@ export function FeaturedCarousel({
 
   if (!items.length) return null;
 
+  const wideStage = slideWidth > height;
+  // Web: title clamp(1.8rem, 7vh, 3.6rem); description drops to 2 lines on short screens.
+  const titleSize = Math.max(29, Math.min(58, screen.height * 0.07));
+  const descriptionLines = screen.height <= 700 ? 2 : 3;
+
   return (
-    <View style={[styles.wrapper, { height }]} onLayout={handleLayout}>
+    <View testID="featured-carousel" style={[styles.wrapper, { height }]} onLayout={handleLayout}>
       <FlatList
         ref={listRef}
         data={items}
@@ -111,11 +158,9 @@ export function FeaturedCarousel({
           const imageUrl = resolveAssetUrl(item.imagePath);
           return (
             <View style={[styles.slide, { width: slideWidth, height }]}>
-              {imageUrl ? (
-                <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="cover" />
-              ) : (
-                <View style={[styles.image, styles.imageFallback]} />
-              )}
+              <HeroArt uri={imageUrl} wideStage={wideStage} height={height} />
+              {/* The web hero's vignette: dark under the nav, navy behind the copy, then the bottom
+                  fade last so the hero always ends in the plain page color (no seam with the rows). */}
               <LinearGradient
                 pointerEvents="none"
                 colors={["rgba(7,7,10,0.85)", "rgba(7,7,10,0.35)", "rgba(7,7,10,0)"]}
@@ -124,18 +169,38 @@ export function FeaturedCarousel({
               />
               <LinearGradient
                 pointerEvents="none"
-                colors={["rgba(7,7,10,0)", "rgba(7,7,10,0.6)", colors.background]}
-                locations={[0, 0.55, 1]}
-                style={styles.bottomFade}
+                colors={["rgba(5,12,34,0.9)", "rgba(8,20,56,0.5)", "rgba(8,20,56,0)"]}
+                locations={[0, 0.38, 0.65]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={StyleSheet.absoluteFill}
               />
-              <View style={styles.content}>
-                <Text style={styles.title} numberOfLines={3}>
+              <LinearGradient
+                pointerEvents="none"
+                colors={["rgba(7,7,10,0)", "rgba(7,7,10,0.6)", colors.background]}
+                locations={[0.5, 0.78, 1]}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={[styles.content, wideStage && styles.contentWide]}>
+                <Text
+                  style={[styles.title, wideStage && { fontSize: titleSize, lineHeight: titleSize * 1.04 }]}
+                  numberOfLines={3}
+                >
                   {item.name}
                 </Text>
-                {index === activeIndex ? <HeroDescription dirPath={item.pathToDir} /> : null}
+                {index === activeIndex ? <HeroDescription dirPath={item.pathToDir} lines={descriptionLines} /> : null}
                 <View style={styles.actions}>
                   {onPlay ? (
-                    <PlayButton label="Play" large preferredFocus={index === 0} onPress={() => onPlay(item)} />
+                    <PlayButton
+                      label="Play"
+                      large
+                      preferredFocus={index === 0}
+                      onPress={() => onPlay(item)}
+                      iconNode={<Ionicons name="play" size={18} color={colors.playText} />}
+                      style={styles.actionButton}
+                      focusStyle={focusGlow}
+                      onFocus={onFocus}
+                    />
                   ) : null}
                   <GlassButton
                     label="More Info"
@@ -143,6 +208,9 @@ export function FeaturedCarousel({
                     large
                     preferredFocus={!onPlay && index === 0}
                     onPress={() => onSelect(item)}
+                    style={styles.actionButton}
+                    focusStyle={focusGlow}
+                    onFocus={onFocus}
                   />
                 </View>
               </View>
@@ -198,6 +266,16 @@ const styles = StyleSheet.create({
   imageFallback: {
     backgroundColor: colors.surfaceElevated,
   },
+  // Darkens the blurred backdrop (the web's brightness(.55)) with a navy cast.
+  backdropDim: {
+    backgroundColor: "rgba(4,10,30,0.5)",
+  },
+  poster: {
+    position: "absolute",
+    right: "7%",
+    borderRadius: 16,
+    boxShadow: "0 30px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.08)",
+  },
   topFade: {
     position: "absolute",
     top: 0,
@@ -205,18 +283,19 @@ const styles = StyleSheet.create({
     right: 0,
     height: 120,
   },
-  bottomFade: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: "70%",
-  },
   content: {
     position: "absolute",
     left: SCREEN_GUTTER + 4,
     right: SCREEN_GUTTER + 4,
     bottom: 44,
+  },
+  // Web: bottom 16%, left 4%, max-width min(600px, 58%).
+  contentWide: {
+    left: "4%",
+    right: undefined,
+    bottom: "16%",
+    width: "58%",
+    maxWidth: 600,
   },
   title: {
     color: "#ffffff",
@@ -224,24 +303,31 @@ const styles = StyleSheet.create({
     fontSize: 36,
     lineHeight: 38,
     letterSpacing: -1.3,
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
   },
   description: {
     color: "rgba(255,255,255,0.78)",
     fontFamily: fonts.body,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 10,
+    fontSize: 15,
+    lineHeight: 23,
+    marginTop: 12,
   },
   actions: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 16,
+    gap: 12,
+    marginTop: 22,
+  },
+  actionButton: {
+    paddingHorizontal: 30,
+    paddingVertical: 13,
   },
   dots: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 16,
+    bottom: "5%",
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",

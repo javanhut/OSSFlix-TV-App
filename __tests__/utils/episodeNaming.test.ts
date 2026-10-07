@@ -92,6 +92,7 @@ describe("parseEpisodePath", () => {
   it("drops a release-name stem that just ends in the episode number", () => {
     expect(parseEpisodePath("s1/ep1/Yaseinolastbossgaarawareta01.mkv")?.title).toBe("");
     expect(parseEpisodePath("s1/ep3/My Show - 03.mkv")?.title).toBe("");
+    expect(parseEpisodePath("yaseinolastbossgaarawareta01_s01_ep01.mkv")?.title).toBe("");
   });
 
   it("keeps a real title whose trailing number isn't the episode number", () => {

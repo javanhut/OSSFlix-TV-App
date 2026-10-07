@@ -20,9 +20,11 @@ export const colors = {
   textMuted: "#9a9aa8",
   textSoft: "#c8c8d2",
   textDim: "#6b6b78",
-  play: "#ffffff",
-  playPressed: "rgba(255,255,255,0.86)",
-  playText: "#0a0a0d",
+  // Play/Resume: Reelscape blue rather than the web's white, to sit with the navy TV look.
+  play: "#2563eb",
+  playPressed: "#1d4ed8",
+  playFocused: "#3b82f6",
+  playText: "#ffffff",
   green: "#22c55e",
 };
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { StyleSheet } from "react-native";
 import { fireEvent, render } from "@testing-library/react-native";
 import { TitleCard } from "../../src/components/TitleCard";
 import { useSessionStore } from "../../src/state/session";
@@ -47,6 +48,16 @@ describe("TitleCard", () => {
     const item = { ...baseItem, type: "Movie" };
     const { queryByText } = render(<TitleCard item={item} onPress={() => {}} />);
     expect(queryByText("Movie")).toBeNull();
+  });
+
+  it("puts the blue ring on the card while it has D-pad focus", () => {
+    const { getByLabelText, getByText } = render(<TitleCard item={baseItem} onPress={() => {}} />);
+    // The title's parent is the animated card that carries the ring.
+    const ring = () => StyleSheet.flatten(getByText("Inception").parent?.parent?.props.style).borderColor;
+    fireEvent(getByLabelText("Inception"), "focus");
+    expect(ring()).toBe("#60a5fa");
+    fireEvent(getByLabelText("Inception"), "blur");
+    expect(ring()).not.toBe("#60a5fa");
   });
 
   it("fires onPress when pressed", () => {

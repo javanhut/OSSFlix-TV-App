@@ -1,5 +1,8 @@
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -10,6 +13,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api } from "../api/client";
@@ -19,6 +23,7 @@ import { Pressable } from "../components/FocusPressable";
 import { TitleRail } from "../components/TitleRail";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { colors } from "../theme/colors";
+import { focusGlow } from "../theme/focus";
 import { fonts } from "../theme/typography";
 import type { TitleSummary } from "../types/api";
 
@@ -50,12 +55,30 @@ const BROWSE_LINKS: { label: string; to: (nav: NativeStackNavigationProp<RootSta
   { label: "For You", to: (nav) => nav.navigate("Recommendations") },
 ];
 
+/** A web-navbar-style link: muted until the remote lands on it, then white on a lifted pill. */
+function NavLink({ label, onPress }: { label: string; onPress: () => void }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <Pressable
+      onPress={onPress}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      accessibilityRole="link"
+      style={styles.navLink}
+      focusStyle={[focusGlow, styles.navLinkFocused]}
+    >
+      <Text style={[styles.navLabel, focused && styles.navLabelFocused]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export function HomeScreen() {
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
-  const heroHeight = isLandscape ? height * 0.85 : Math.min(height * 0.64, 620);
+  // On TV the hero stops short so the first row peeks in below it.
+  const heroHeight = isLandscape ? height * 0.72 : Math.min(height * 0.64, 620);
   const categoriesQuery = useQuery({
     queryKey: ["categories"],
     queryFn: api.getCategories,
@@ -74,6 +97,38 @@ export function HomeScreen() {
   const handleRefresh = () => {
     void Promise.all([categoriesQuery.refetch(), continueWatchingQuery.refetch(), watchlistQuery.refetch()]);
   };
+  // --- TV scrolling: a sticky header, with the page gliding the focused row in under it. ---
+  const scrollRef = useRef<ScrollView>(null);
+  const [scrolled, setScrolled] = useState(false);
+  const scrolledRef = useRef(false);
+  const headerHeightRef = useRef(0);
+  const railsTopRef = useRef(0);
+  const railTopsRef = useRef(new Map<string, number>());
+
+  const openTitle = useCallback(
+    (item: TitleSummary) => navigation.navigate("TitleDetails", { dirPath: item.pathToDir }),
+    [navigation],
+  );
+  const scrollToTop = useCallback(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, []);
+  // Sit the row just under the header. If Android had to nudge a card into view first, this
+  // glides the rest of the way; usually it's the whole move, so it never hides under the header.
+  const scrollToRail = useCallback((key: string) => {
+    const railTop = railTopsRef.current.get(key);
+    if (railTop == null) return;
+    const y = railsTopRef.current + railTop - headerHeightRef.current;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+  }, []);
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    // Only re-render when the header flips between see-through and solid.
+    const next = event.nativeEvent.contentOffset.y > 24;
+    if (next !== scrolledRef.current) {
+      scrolledRef.current = next;
+      setScrolled(next);
+    }
+  }, []);
+
   const allCategoryRows = categoriesQuery.data || [];
   const categoryRows = allCategoryRows.filter((row) => BASIC_GENRES.has(row.genre));
 
@@ -100,67 +155,127 @@ export function HomeScreen() {
     );
   }
 
+  const rails = [
+    { key: "continue", title: "Continue Watching", items: continueWatchingQuery.data?.titles || [] },
+    { key: "my-list", title: "My List", items: watchlistQuery.data?.titles || [] },
+    ...categoryRows.map((row) => ({ key: `genre:${row.genre}`, title: row.genre, items: row.titles })),
+  ];
+
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
-    >
-      {featured.length ? (
-        <FeaturedCarousel
-          items={featured}
-          height={heroHeight}
-          onSelect={(item) => navigation.navigate("TitleDetails", { dirPath: item.pathToDir })}
-          onPlay={(item) => navigation.navigate("TitleDetails", { dirPath: item.pathToDir, autoplay: true })}
-        />
-      ) : (
-        <View style={{ height: insets.top + 56 }} />
-      )}
-      <Text style={[styles.brand, { top: insets.top + 12 }]} accessibilityRole="header">
-        Reelscape
-      </Text>
+    <View style={styles.screen}>
       <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.browseRow}
-        contentContainerStyle={styles.browseRowContent}
+        testID="home-scroll"
+        ref={scrollRef}
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        onScroll={isLandscape ? handleScroll : undefined}
+        scrollEventThrottle={32}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
       >
-        {BROWSE_LINKS.map((link) => (
-          <Pressable
-            key={link.label}
-            onPress={() => link.to(navigation)}
-            accessibilityRole="link"
-            style={({ pressed }) => [styles.browsePill, pressed && styles.browsePillPressed]}
-          >
-            <Text style={styles.browseLabel}>{link.label}</Text>
-          </Pressable>
-        ))}
+        {isLandscape ? (
+          // Navy glow behind the first rows. It sits under the hero and starts transparent at the
+          // hero's bottom edge, so the hero still meets plain page color there (no seam).
+          <View pointerEvents="none" style={[styles.tvGlow, { top: heroHeight, height: height * 1.1 }]}>
+            <LinearGradient
+              colors={["rgba(16,36,90,0)", "rgba(16,36,90,0.6)", "rgba(16,36,90,0)"]}
+              locations={[0, 0.35, 1]}
+              style={StyleSheet.absoluteFill}
+            />
+            {/* Strongest on the left, fading to black toward the right. */}
+            <LinearGradient
+              colors={["rgba(7,7,10,0)", "rgba(7,7,10,0.85)"]}
+              locations={[0.1, 0.85]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={StyleSheet.absoluteFill}
+            />
+          </View>
+        ) : null}
+        {featured.length ? (
+          <FeaturedCarousel
+            items={featured}
+            height={heroHeight}
+            onSelect={openTitle}
+            onPlay={(item) => navigation.navigate("TitleDetails", { dirPath: item.pathToDir, autoplay: true })}
+            onFocus={isLandscape ? scrollToTop : undefined}
+          />
+        ) : (
+          <View style={{ height: insets.top + 56 }} />
+        )}
+        {isLandscape ? null : (
+          <>
+            <Text style={[styles.brand, { top: insets.top + 12 }]} accessibilityRole="header">
+              Reelscape
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.browseRow}
+              contentContainerStyle={styles.browseRowContent}
+            >
+              {BROWSE_LINKS.map((link) => (
+                <Pressable
+                  key={link.label}
+                  onPress={() => link.to(navigation)}
+                  accessibilityRole="link"
+                  style={({ pressed }) => [styles.browsePill, pressed && styles.browsePillPressed]}
+                >
+                  <Text style={styles.browseLabel}>{link.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </>
+        )}
+        <View
+          style={isLandscape ? styles.tvRails : undefined}
+          onLayout={(event) => {
+            railsTopRef.current = event.nativeEvent.layout.y;
+          }}
+        >
+          {rails.map((rail, index) => (
+            <View
+              key={rail.key}
+              onLayout={(event) => {
+                railTopsRef.current.set(rail.key, event.nativeEvent.layout.y);
+              }}
+            >
+              <TitleRail
+                title={rail.title}
+                items={rail.items}
+                onSelect={openTitle}
+                onRowFocus={isLandscape ? () => scrollToRail(rail.key) : undefined}
+              />
+              {index === 1 && !categoryRows.length && !allCategoryRows.length ? (
+                <EmptyState
+                  title="No library data yet"
+                  subtitle="Once the server has scanned media, your categories will appear here."
+                />
+              ) : null}
+            </View>
+          ))}
+        </View>
       </ScrollView>
-      <TitleRail
-        title="Continue Watching"
-        items={continueWatchingQuery.data?.titles || []}
-        onSelect={(item) => navigation.navigate("TitleDetails", { dirPath: item.pathToDir })}
-      />
-      <TitleRail
-        title="My List"
-        items={watchlistQuery.data?.titles || []}
-        onSelect={(item) => navigation.navigate("TitleDetails", { dirPath: item.pathToDir })}
-      />
-      {!categoryRows.length && !allCategoryRows.length ? (
-        <EmptyState
-          title="No library data yet"
-          subtitle="Once the server has scanned media, your categories will appear here."
-        />
+      {isLandscape ? (
+        // TV: the web navbar, pinned. See-through over the hero; solid navy glass once the page
+        // scrolls into the rows (the web's `.scrolled`). Press up from the hero to reach it.
+        <View
+          testID="tv-header"
+          style={[styles.navBar, { paddingTop: insets.top + 14 }, scrolled && styles.navBarSolid]}
+          onLayout={(event) => {
+            headerHeightRef.current = event.nativeEvent.layout.height;
+          }}
+        >
+          <Text style={styles.navBrand} accessibilityRole="header">
+            Reelscape
+          </Text>
+          <View style={styles.navLinks}>
+            {BROWSE_LINKS.map((link) => (
+              <NavLink key={link.label} label={link.label} onPress={() => link.to(navigation)} />
+            ))}
+          </View>
+        </View>
       ) : null}
-      {categoryRows.map((row) => (
-        <TitleRail
-          key={row.genre}
-          title={row.genre}
-          items={row.titles}
-          onSelect={(item) => navigation.navigate("TitleDetails", { dirPath: item.pathToDir })}
-        />
-      ))}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -207,6 +322,66 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: fonts.bodySemiBold,
     fontSize: 14,
+  },
+  navBar: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 34,
+    paddingBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 28,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "transparent",
+  },
+  navBarSolid: {
+    backgroundColor: "rgba(6,12,30,0.92)",
+    borderBottomColor: "rgba(255,255,255,0.08)",
+  },
+  navBrand: {
+    color: colors.accentText,
+    fontFamily: fonts.display,
+    fontSize: 26,
+    letterSpacing: -1.1,
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
+  navLinks: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  navLink: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  navLinkFocused: {
+    backgroundColor: colors.surfaceHover,
+  },
+  navLabel: {
+    color: "rgba(255,255,255,0.72)",
+    fontFamily: fonts.bodyMedium,
+    fontSize: 15,
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
+  navLabelFocused: {
+    color: "#ffffff",
+  },
+  tvGlow: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+  },
+  // Web rows sit at 4% from the edge; the content padding already gives part of that.
+  tvRails: {
+    paddingHorizontal: 14,
+    paddingTop: 4,
   },
   loading: {
     flex: 1,

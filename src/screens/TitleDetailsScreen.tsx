@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, useWindo
 import { Pressable } from "../components/FocusPressable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -11,11 +11,13 @@ import { api, resolveAssetUrl } from "../api/client";
 import { GlassButton, PlayButton } from "../components/Buttons";
 import { EmptyState } from "../components/EmptyState";
 import { EpisodeRow } from "../components/EpisodeRow";
+import { TvBanner } from "../components/TvBanner";
 import { deleteDownload, makeDownloadId, startDownload } from "../downloads/downloadManager";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { useDownloadsStore } from "../state/downloads";
 import { useSessionStore } from "../state/session";
 import { colors } from "../theme/colors";
+import { focusGlow } from "../theme/focus";
 import { fonts } from "../theme/typography";
 import {
   type AudioVariant,
@@ -32,6 +34,25 @@ type AudioSelection = AudioVariant | "both";
 import { formatTitleType } from "../utils/titleType";
 
 type Props = NativeStackScreenProps<RootStackParamList, "TitleDetails">;
+
+// On a TV (landscape) the episode list scrolls under a fixed header, sized to show this many rows.
+const EPISODES_PER_VIEW = 4;
+const EPISODE_GAP = 10;
+// Room above/below the list so the focused row's glow isn't clipped by the scroller.
+const EPISODE_LIST_INSET = 16;
+const MIN_EPISODE_ROW_HEIGHT = 72;
+const EPISODE_FOCUS_SLOT = 1;
+
+// TV page: a deep navy gradient under a full-width banner that fades into it.
+// Near-black base; the blue comes from TV_BLUE_WASH on top of it.
+const TV_PAGE_GRADIENT = ["#050914", "#02040a", "#000000"] as const;
+// Navy rising from the bottom-left (behind the actions); it fades out by about half-height, below
+// the visible banner art, so it doesn't tint the artwork.
+const TV_BLUE_WASH = ["rgba(16,36,90,0.75)", "rgba(12,28,70,0.4)", "rgba(12,28,70,0)"] as const;
+const TV_PAGE_GRADIENT_STOPS = [0, 0.6, 1] as const;
+const TV_BANNER_FRACTION = 0.6; // ends where the page gradient is TV_PAGE_GRADIENT[1]
+// The episode list starts this far down, leaving the top of the banner clear.
+const TV_EPISODES_TOP_FRACTION = 0.15;
 
 type EpisodeEntry = {
   video: string;
@@ -220,6 +241,8 @@ export function TitleDetailsScreen({ route, navigation }: Props) {
 
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
+  const [episodeViewportHeight, setEpisodeViewportHeight] = useState(0);
+  const episodeScrollRef = useRef<ScrollView>(null);
 
   const effectiveSeason = selectedSeason ?? seasonKeys[0] ?? null;
   const seasonMeta = useMemo(
@@ -317,9 +340,49 @@ export function TitleDetailsScreen({ route, navigation }: Props) {
   const showDropdown = seasonKeys.length >= 2;
 
   const inList = !!watchlistQuery.data?.inList;
+  const playFromTarget = () =>
+    playTarget &&
+    navigation.navigate("Player", {
+      dirPath: details.dirPath,
+      title: details.name,
+      videos: filteredVideos,
+      startIndex: playTarget.startIndex,
+      initialTime: playTarget.initialTime,
+      subtitles: details.subtitles,
+    });
+  const playLabel = playTarget?.initialTime ? "Resume" : "Play";
+  const downloadLabel = filteredVideos.length > 1 ? `Download all (${filteredVideos.length})` : "Download";
+
+  const listPill = (
+    <Pressable
+      onPress={() => toggleWatchlist.mutate()}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.listPill, inList && styles.listPillActive, pressed && styles.listPillPressed]}
+      focusStyle={isLandscape ? focusGlow : undefined}
+    >
+      <Feather name={inList ? "check" : "plus"} size={14} color={inList ? colors.accentSoft : colors.text} />
+      <Text style={[styles.listPillLabel, inList && styles.listPillLabelActive]}>
+        {inList ? "In My List" : "My List"}
+      </Text>
+    </Pressable>
+  );
+
+  // Our own back button (the native header's can't be styled or given the focus glow).
+  const backButton = (
+    <Pressable
+      onPress={() => navigation.goBack()}
+      accessibilityRole="button"
+      accessibilityLabel="Go back"
+      style={[styles.backButton, { top: insets.top + 16, left: insets.left + 16 }]}
+      focusStyle={focusGlow}
+    >
+      <Feather name="arrow-left" size={22} color={colors.text} />
+    </Pressable>
+  );
+
   const detailsPanel = (
     <>
-      <View style={[styles.banner, { minHeight: (isLandscape ? 200 : 260) + insets.top }]}>
+      <View style={[styles.banner, { minHeight: 260 + insets.top }]}>
         {imageUrl ? (
           <Image source={{ uri: imageUrl }} style={styles.bannerImage} resizeMode="cover" />
         ) : (
@@ -340,20 +403,7 @@ export function TitleDetailsScreen({ route, navigation }: Props) {
           <Text style={styles.title} numberOfLines={2} accessibilityRole="header">
             {details.name}
           </Text>
-          <Pressable
-            onPress={() => toggleWatchlist.mutate()}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.listPill,
-              inList && styles.listPillActive,
-              pressed && styles.listPillPressed,
-            ]}
-          >
-            <Feather name={inList ? "check" : "plus"} size={14} color={inList ? colors.accentSoft : colors.text} />
-            <Text style={[styles.listPillLabel, inList && styles.listPillLabelActive]}>
-              {inList ? "In My List" : "My List"}
-            </Text>
-          </Pressable>
+          {listPill}
         </View>
       </View>
       <Text style={styles.meta}>{formatTitleType(details.type)}</Text>
@@ -373,92 +423,159 @@ export function TitleDetailsScreen({ route, navigation }: Props) {
       ) : null}
       {details.cast?.length ? <Text style={styles.cast}>Cast: {details.cast.join(", ")}</Text> : null}
       <View style={styles.actionRow}>
+        <PlayButton large preferredFocus label={playLabel} disabled={!playTarget} onPress={playFromTarget} />
+        {filteredVideos.length ? (
+          <GlassButton large icon="download" label={downloadLabel} onPress={downloadAll} />
+        ) : null}
+      </View>
+    </>
+  );
+
+  // TV downloads the season on screen (the same as everything for a one-season show).
+  const tvDownload =
+    effectiveSeason != null && visibleEntries.length
+      ? {
+          label: `Download Season ${effectiveSeason} (${visibleEntries.length})`,
+          onPress: () => {
+            for (const entry of visibleEntries) startEpisodeDownload(entry);
+          },
+        }
+      : { label: downloadLabel, onPress: downloadAll };
+
+  // TV: the title block sits over the bottom of the full-width banner (no cast/genre chips, to keep
+  // the actions on screen).
+  const tvInfoPanel = (
+    <>
+      <Text style={styles.tvTitle} numberOfLines={2} accessibilityRole="header">
+        {details.name}
+      </Text>
+      <Text style={styles.tvMeta} numberOfLines={1}>
+        {[formatTitleType(details.type), ...(details.genre ?? []).slice(0, 2)].join("  ·  ")}
+      </Text>
+      {description ? (
+        <Text style={styles.tvDescription} numberOfLines={3}>
+          {description}
+        </Text>
+      ) : null}
+      <View style={styles.tvPillRow}>{listPill}</View>
+      <View style={styles.tvActions}>
         <PlayButton
           large
           preferredFocus
-          label={playTarget?.initialTime ? "Resume" : "Play"}
+          label={playLabel}
           disabled={!playTarget}
-          onPress={() =>
-            playTarget &&
-            navigation.navigate("Player", {
-              dirPath: details.dirPath,
-              title: details.name,
-              videos: filteredVideos,
-              startIndex: playTarget.startIndex,
-              initialTime: playTarget.initialTime,
-              subtitles: details.subtitles,
-            })
-          }
+          onPress={playFromTarget}
+          iconNode={<Ionicons name="play" size={24} color={colors.playText} />}
+          style={styles.tvActionButton}
+          labelStyle={styles.tvActionLabel}
+          focusStyle={focusGlow}
         />
         {filteredVideos.length ? (
           <GlassButton
             large
-            icon="download"
-            label={filteredVideos.length > 1 ? `Download all (${filteredVideos.length})` : "Download"}
-            onPress={downloadAll}
+            label={tvDownload.label}
+            onPress={tvDownload.onPress}
+            iconNode={<Feather name="download" size={22} color={colors.text} />}
+            style={[styles.tvActionButton, styles.tvGlassButton]}
+            labelStyle={styles.tvActionLabel}
+            focusStyle={focusGlow}
           />
         ) : null}
       </View>
     </>
   );
 
-  const episodesPanel = (
-    <>
-      {showDropdown ? (
-        <View style={styles.seasonSection}>
-          <Pressable onPress={() => setSeasonMenuOpen((open) => !open)} style={styles.seasonTrigger}>
-            <Text style={styles.seasonTriggerLabel}>Season {effectiveSeason}</Text>
-            <Feather name={seasonMenuOpen ? "chevron-up" : "chevron-down"} size={18} color={colors.text} />
-          </Pressable>
-          {seasonMenuOpen ? (
-            <View style={styles.menuSheet}>
-              {seasonKeys.map((season) => {
-                const active = season === effectiveSeason;
-                return (
-                  <Pressable
-                    key={season}
-                    onPress={() => {
-                      setSelectedSeason(season);
-                      setSeasonMenuOpen(false);
-                    }}
-                    style={[styles.menuItem, active && styles.menuItemActive]}
-                  >
-                    <Text style={styles.menuLabel}>Season {season}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
-        </View>
-      ) : null}
+  const episodeRowHeight =
+    isLandscape && episodeViewportHeight > 0
+      ? Math.max(
+          MIN_EPISODE_ROW_HEIGHT,
+          (episodeViewportHeight - 2 * EPISODE_LIST_INSET - (EPISODES_PER_VIEW - 1) * EPISODE_GAP) / EPISODES_PER_VIEW,
+        )
+      : undefined;
 
-      {hasBothVariants ? (
-        <View style={styles.variantRow}>
-          {(["sub", "dub", "both"] as AudioSelection[]).map((option) => {
-            const active = (selectedVariant ?? "sub") === option;
-            const label = option === "both" ? "Sub + Dub" : option === "sub" ? "Sub" : "Dub";
+  // Like the home rows: keep the focused episode in the second slot, so the rows either side are
+  // already on screen and Android never jumps the list; it glides here instead.
+  const glideToEpisode = (index: number) => {
+    if (!episodeRowHeight) return;
+    const stride = episodeRowHeight + EPISODE_GAP;
+    episodeScrollRef.current?.scrollTo({ y: Math.max(0, (index - EPISODE_FOCUS_SLOT) * stride), animated: true });
+  };
+
+  const seasonPicker = showDropdown ? (
+    <View style={isLandscape ? styles.tvSeasonPicker : styles.seasonSection}>
+      <Pressable
+        onPress={() => setSeasonMenuOpen((open) => !open)}
+        style={[styles.seasonTrigger, isLandscape && styles.tvSeasonTrigger]}
+        focusStyle={isLandscape ? focusGlow : undefined}
+      >
+        <Text style={styles.seasonTriggerLabel}>Season {effectiveSeason}</Text>
+        <Feather name={seasonMenuOpen ? "chevron-up" : "chevron-down"} size={18} color={colors.text} />
+      </Pressable>
+      {seasonMenuOpen ? (
+        <View style={[styles.menuSheet, isLandscape && styles.tvMenuSheet]}>
+          {seasonKeys.map((season) => {
+            const active = season === effectiveSeason;
             return (
               <Pressable
-                key={option}
-                onPress={() => setSelectedVariant(option)}
-                style={[styles.variantOption, active && styles.variantOptionActive]}
+                key={season}
+                onPress={() => {
+                  setSelectedSeason(season);
+                  setSeasonMenuOpen(false);
+                }}
+                style={[styles.menuItem, active && styles.menuItemActive]}
               >
-                <Text style={[styles.variantLabel, active && styles.variantLabelActive]}>{label}</Text>
+                <Text style={styles.menuLabel}>Season {season}</Text>
               </Pressable>
             );
           })}
         </View>
       ) : null}
+    </View>
+  ) : null;
 
-      {seasonKeys.length > 0 ? <Text style={styles.sectionTitle}>Episodes</Text> : null}
+  const variantPicker = hasBothVariants ? (
+    <View style={styles.variantRow}>
+      {(["sub", "dub", "both"] as AudioSelection[]).map((option) => {
+        const active = (selectedVariant ?? "sub") === option;
+        const label = option === "both" ? "Sub + Dub" : option === "sub" ? "Sub" : "Dub";
+        return (
+          <Pressable
+            key={option}
+            onPress={() => setSelectedVariant(option)}
+            style={[styles.variantOption, active && styles.variantOptionActive]}
+          >
+            <Text style={[styles.variantLabel, active && styles.variantLabelActive]}>{label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  ) : null;
+
+  const episodesHeading =
+    seasonKeys.length > 0 ? (
+      <Text style={[styles.sectionTitle, isLandscape && styles.tvSectionTitle]}>Episodes</Text>
+    ) : null;
+
+  const episodesHeader = (
+    <>
+      {seasonPicker}
+      {variantPicker}
+      {episodesHeading}
+    </>
+  );
+
+  const episodeRows = (
+    <>
       {visibleEntries.length ? (
-        visibleEntries.map((entry) => {
+        visibleEntries.map((entry, index) => {
           const startIndex = filteredVideos.indexOf(entry.video);
           const progress = progressByVideo.get(entry.video) ?? null;
           const download = downloadItems[makeDownloadId(entry.video, 0)];
           return (
             <EpisodeRow
               key={entry.video}
+              style={episodeRowHeight ? { height: episodeRowHeight } : undefined}
+              onFocus={episodeRowHeight ? () => glideToEpisode(index) : undefined}
               parsed={entry.parsed}
               fallbackLabel={entry.label}
               progress={progress}
@@ -500,31 +617,59 @@ export function TitleDetailsScreen({ route, navigation }: Props) {
 
   if (isLandscape) {
     return (
-      <View style={styles.landscapeRoot}>
-        <ScrollView
-          style={styles.landscapeColumn}
-          contentContainerStyle={styles.landscapeColumnContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {detailsPanel}
-        </ScrollView>
-        <View style={styles.landscapeDivider} />
-        <ScrollView
-          style={styles.landscapeColumn}
-          contentContainerStyle={styles.landscapeColumnContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {episodesPanel}
-        </ScrollView>
+      <View style={styles.tvRoot}>
+        <LinearGradient
+          pointerEvents="none"
+          colors={TV_PAGE_GRADIENT}
+          locations={TV_PAGE_GRADIENT_STOPS}
+          style={StyleSheet.absoluteFill}
+        />
+        <TvBanner uri={imageUrl} height={height * TV_BANNER_FRACTION} fadeTo={TV_PAGE_GRADIENT[1]} />
+        {/* Black-to-navy wash; overlaps only the banner's faded bottom, hiding its edge. */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={TV_BLUE_WASH}
+          locations={[0, 0.4, 1]}
+          start={{ x: 0.2, y: 1 }}
+          end={{ x: 0.3, y: 0.55 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[styles.tvColumns, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+          <ScrollView
+            style={styles.tvInfoColumn}
+            contentContainerStyle={styles.tvInfoContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {tvInfoPanel}
+          </ScrollView>
+          <View style={[styles.tvEpisodesColumn, { paddingTop: height * TV_EPISODES_TOP_FRACTION }]}>
+            <View style={styles.episodesHeader}>{episodesHeader}</View>
+            <ScrollView
+              testID="episode-scroller"
+              ref={episodeScrollRef}
+              style={styles.episodeScroller}
+              contentContainerStyle={styles.episodeListContent}
+              showsVerticalScrollIndicator={false}
+              onLayout={(event) => setEpisodeViewportHeight(event.nativeEvent.layout.height)}
+            >
+              {episodeRows}
+            </ScrollView>
+          </View>
+        </View>
+        {backButton}
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      {detailsPanel}
-      {episodesPanel}
-    </ScrollView>
+    <View style={styles.screen}>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+        {detailsPanel}
+        {episodesHeader}
+        <View style={styles.episodeList}>{episodeRows}</View>
+      </ScrollView>
+      {backButton}
+    </View>
   );
 }
 
@@ -537,22 +682,127 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 36,
   },
-  landscapeRoot: {
+  backButton: {
+    position: "absolute",
+    zIndex: 10,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(5,9,22,0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
+  tvRoot: {
+    flex: 1,
+    backgroundColor: TV_PAGE_GRADIENT[2],
+  },
+  tvColumns: {
     flex: 1,
     flexDirection: "row",
-    backgroundColor: colors.background,
   },
-  landscapeColumn: {
+  tvInfoColumn: {
+    flex: 1.1,
+  },
+  tvInfoContent: {
+    flexGrow: 1,
+    justifyContent: "flex-end",
+    paddingTop: 88,
+    paddingLeft: 48,
+    paddingRight: 28,
+    paddingBottom: 32,
+  },
+  tvTitle: {
+    color: "#ffffff",
+    fontFamily: fonts.display,
+    fontSize: 40,
+    lineHeight: 46,
+    letterSpacing: -1.2,
+    textShadowColor: "rgba(0,0,0,0.55)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 12,
+  },
+  tvMeta: {
+    marginTop: 8,
+    color: colors.accentText,
+    fontFamily: fonts.bodyBold,
+    fontSize: 13,
+    letterSpacing: 4,
+    textTransform: "uppercase",
+  },
+  tvDescription: {
+    marginTop: 12,
+    color: colors.textSoft,
+    fontFamily: fonts.body,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  tvPillRow: {
+    marginTop: 18,
+  },
+  tvActions: {
+    marginTop: 22,
+    gap: 12,
+  },
+  // Icon and label on the left, like the mockup.
+  tvActionButton: {
+    justifyContent: "flex-start",
+    gap: 18,
+    paddingHorizontal: 28,
+    paddingVertical: 15,
+    borderRadius: 12,
+  },
+  tvActionLabel: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 19,
+  },
+  tvGlassButton: {
+    backgroundColor: "rgba(14,30,72,0.75)",
+    borderWidth: 1,
+    borderColor: "rgba(96,165,250,0.3)",
+  },
+  tvEpisodesColumn: {
+    flex: 1,
+    paddingRight: 16,
+  },
+  tvSectionTitle: {
+    marginTop: 12,
+    marginBottom: 0,
+    fontSize: 24,
+  },
+  tvSeasonPicker: {
+    zIndex: 10,
+  },
+  tvSeasonTrigger: {
+    paddingVertical: 11,
+    backgroundColor: "rgba(14,30,72,0.75)",
+    borderColor: "rgba(96,165,250,0.3)",
+  },
+  // Overlays the list instead of pushing it down.
+  tvMenuSheet: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    elevation: 10,
+    backgroundColor: "rgba(8,15,38,0.97)",
+  },
+  episodesHeader: {
+    paddingHorizontal: 20,
+    zIndex: 2,
+  },
+  episodeScroller: {
     flex: 1,
   },
-  landscapeColumnContent: {
-    padding: 20,
-    paddingBottom: 36,
+  episodeListContent: {
+    paddingHorizontal: 20,
+    paddingVertical: EPISODE_LIST_INSET,
+    gap: EPISODE_GAP,
   },
-  landscapeDivider: {
-    width: 1,
-    backgroundColor: colors.border,
-    opacity: 0.4,
+  episodeList: {
+    gap: EPISODE_GAP,
   },
   banner: {
     marginHorizontal: -20,

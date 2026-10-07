@@ -1,12 +1,13 @@
 import { type BottomTabBarButtonProps, createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
-import { StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useSessionStore } from "../state/session";
 import { colors } from "../theme/colors";
+import { focusGlow } from "../theme/focus";
 import { fonts } from "../theme/typography";
 import { ExploreScreen } from "../screens/ExploreScreen";
 import { GenreScreen } from "../screens/GenreScreen";
@@ -82,15 +83,40 @@ function TabButton({
   pressOpacity: _pressOpacity,
   hoverEffect: _hoverEffect,
   ref: _ref,
+  style,
+  children,
   ...rest
 }: BottomTabBarButtonProps) {
-  return <Pressable {...rest} focusStyle={tabStyles.focused} />;
+  const selected = rest["aria-selected"] === true;
+  return (
+    <Pressable {...rest} style={[style, tabStyles.button]} focusStyle={[focusGlow, tabStyles.focused]}>
+      {children}
+      {/* Marks the current section, like the web navbar's underline. */}
+      {selected ? <View style={tabStyles.selectedBar} /> : null}
+    </Pressable>
+  );
 }
 
 const tabStyles = StyleSheet.create({
+  // The sidebar variant lays the button out as a left-aligned row (built for icon + label);
+  // with icons only, center the icon instead.
+  button: {
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 0,
+  },
   focused: {
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(59,130,246,0.18)",
     borderRadius: 12,
+  },
+  selectedBar: {
+    position: "absolute",
+    left: -6,
+    top: "28%",
+    bottom: "28%",
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: colors.primary,
   },
 });
 
@@ -102,19 +128,23 @@ function MainTabs() {
   const iconSize = 24;
   const railWidth = 56;
   const tabFocusInset = 6;
+  const railBorder = 1;
 
   // TV layout: a slim icon rail on the left, reached with D-pad left.
   const tabBarStyle = {
-    backgroundColor: colors.glassStrong,
+    backgroundColor: "rgba(6,12,30,0.94)",
     borderRightColor: colors.border,
-    borderRightWidth: 1,
+    borderRightWidth: railBorder,
     borderTopWidth: 0,
     paddingTop: insets.top + 14,
     paddingBottom: insets.bottom + 14,
-    paddingHorizontal: 0,
-    width: railWidth,
+    // The navigator pads the sidebar with paddingStart/End, which beat paddingHorizontal, so zero
+    // them directly; otherwise the items overflow the rail's right edge.
+    paddingStart: insets.left,
+    paddingEnd: 0,
+    width: railWidth + insets.left,
     minWidth: 0,
-    maxWidth: railWidth,
+    maxWidth: railWidth + insets.left,
   };
 
   return (
@@ -134,7 +164,7 @@ function MainTabs() {
         tabBarItemStyle: {
           paddingVertical: 10,
           height: 56,
-          width: railWidth - 2 * tabFocusInset,
+          width: railWidth - railBorder - 2 * tabFocusInset,
           marginHorizontal: tabFocusInset,
           alignItems: "center",
           justifyContent: "center",
@@ -225,7 +255,8 @@ export function RootNavigator() {
       ) : (
         <>
           <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
-          <Stack.Screen name="TitleDetails" component={TitleDetailsScreen} options={overlayHeader} />
+          {/* Draws its own back button over the banner. */}
+          <Stack.Screen name="TitleDetails" component={TitleDetailsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Genre" component={GenreScreen} options={overlayHeader} />
           <Stack.Screen name="Library" component={LibraryScreen} options={overlayHeader} />
           <Stack.Screen name="Watchlist" component={WatchlistScreen} options={overlayHeader} />

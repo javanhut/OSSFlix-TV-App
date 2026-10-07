@@ -138,14 +138,8 @@ export function parseEpisodePath(relPath: string): ParsedEpisode | null {
   const episode = epFromDir ?? epFromFile;
   if (season == null || episode == null) return null;
 
-  let title: string;
-  if (combined) {
-    title = titleFromStem(titleRemnant);
-  } else if (isShowNamePlusNumber(stem, episode)) {
-    title = "";
-  } else {
-    title = titleFromStem(stem);
-  }
+  const titleSource = combined ? titleRemnant : stem;
+  const title = isShowNamePlusNumber(titleSource, episode) ? "" : titleFromStem(titleSource);
 
   return { season, episode, title, ext };
 }

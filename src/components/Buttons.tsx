@@ -1,5 +1,5 @@
-import type { ComponentProps } from "react";
-import { type StyleProp, StyleSheet, Text, type ViewStyle } from "react-native";
+import type { ComponentProps, ReactNode } from "react";
+import { type StyleProp, StyleSheet, Text, type TextStyle, type ViewStyle } from "react-native";
 import { Pressable } from "./FocusPressable";
 import { Feather } from "@expo/vector-icons";
 
@@ -19,6 +19,12 @@ type ButtonProps = {
   testID?: string;
   /** Take initial focus when the screen opens on a TV. */
   preferredFocus?: boolean;
+  /** Extra style while D-pad focused (see FocusPressable). */
+  focusStyle?: StyleProp<ViewStyle>;
+  /** Replaces the Feather `icon`, e.g. a filled glyph from another icon set. */
+  iconNode?: ReactNode;
+  labelStyle?: StyleProp<TextStyle>;
+  onFocus?: () => void;
 };
 
 /** White, high-contrast play/resume action (web `.oss-btn-play`). */
@@ -31,6 +37,10 @@ export function PlayButton({
   style,
   testID,
   preferredFocus,
+  focusStyle,
+  iconNode,
+  labelStyle,
+  onFocus,
 }: ButtonProps) {
   const hasTVPreferredFocus = useTVPreferredFocus(!!preferredFocus);
   return (
@@ -40,6 +50,8 @@ export function PlayButton({
       testID={testID}
       accessibilityRole="button"
       hasTVPreferredFocus={hasTVPreferredFocus}
+      onFocus={onFocus}
+      focusStyle={[styles.playFocused, focusStyle]}
       style={({ pressed }) => [
         styles.base,
         large && styles.large,
@@ -49,14 +61,27 @@ export function PlayButton({
         style,
       ]}
     >
-      <Feather name={icon} size={large ? 18 : 16} color={colors.playText} />
-      <Text style={[styles.label, large && styles.labelLarge, { color: colors.playText }]}>{label}</Text>
+      {iconNode ?? <Feather name={icon} size={large ? 18 : 16} color={colors.playText} />}
+      <Text style={[styles.label, large && styles.labelLarge, { color: colors.playText }, labelStyle]}>{label}</Text>
     </Pressable>
   );
 }
 
 /** Translucent glass action (web `.oss-btn-secondary`). */
-export function GlassButton({ label, onPress, icon, disabled, large, style, testID, preferredFocus }: ButtonProps) {
+export function GlassButton({
+  label,
+  onPress,
+  icon,
+  disabled,
+  large,
+  style,
+  testID,
+  preferredFocus,
+  focusStyle,
+  iconNode,
+  labelStyle,
+  onFocus,
+}: ButtonProps) {
   const hasTVPreferredFocus = useTVPreferredFocus(!!preferredFocus);
   return (
     <Pressable
@@ -65,6 +90,8 @@ export function GlassButton({ label, onPress, icon, disabled, large, style, test
       testID={testID}
       accessibilityRole="button"
       hasTVPreferredFocus={hasTVPreferredFocus}
+      onFocus={onFocus}
+      focusStyle={focusStyle}
       style={({ pressed }) => [
         styles.base,
         large && styles.large,
@@ -74,14 +101,27 @@ export function GlassButton({ label, onPress, icon, disabled, large, style, test
         style,
       ]}
     >
-      {icon ? <Feather name={icon} size={large ? 18 : 16} color={colors.text} /> : null}
-      <Text style={[styles.label, large && styles.labelLarge]}>{label}</Text>
+      {iconNode ?? (icon ? <Feather name={icon} size={large ? 18 : 16} color={colors.text} /> : null)}
+      <Text style={[styles.label, large && styles.labelLarge, labelStyle]}>{label}</Text>
     </Pressable>
   );
 }
 
 /** Solid accent action (web `.oss-btn-primary`). */
-export function PrimaryButton({ label, onPress, icon, disabled, large, style, testID, preferredFocus }: ButtonProps) {
+export function PrimaryButton({
+  label,
+  onPress,
+  icon,
+  disabled,
+  large,
+  style,
+  testID,
+  preferredFocus,
+  focusStyle,
+  iconNode,
+  labelStyle,
+  onFocus,
+}: ButtonProps) {
   const hasTVPreferredFocus = useTVPreferredFocus(!!preferredFocus);
   return (
     <Pressable
@@ -90,6 +130,8 @@ export function PrimaryButton({ label, onPress, icon, disabled, large, style, te
       testID={testID}
       accessibilityRole="button"
       hasTVPreferredFocus={hasTVPreferredFocus}
+      onFocus={onFocus}
+      focusStyle={focusStyle}
       style={({ pressed }) => [
         styles.base,
         large && styles.large,
@@ -99,8 +141,8 @@ export function PrimaryButton({ label, onPress, icon, disabled, large, style, te
         style,
       ]}
     >
-      {icon ? <Feather name={icon} size={large ? 18 : 16} color={colors.primaryText} /> : null}
-      <Text style={[styles.label, large && styles.labelLarge, { color: colors.primaryText }]}>{label}</Text>
+      {iconNode ?? (icon ? <Feather name={icon} size={large ? 18 : 16} color={colors.primaryText} /> : null)}
+      <Text style={[styles.label, large && styles.labelLarge, { color: colors.primaryText }, labelStyle]}>{label}</Text>
     </Pressable>
   );
 }
@@ -121,6 +163,11 @@ const styles = StyleSheet.create({
   },
   play: {
     backgroundColor: colors.play,
+    borderWidth: 1,
+    borderColor: "rgba(147,197,253,0.35)",
+  },
+  playFocused: {
+    backgroundColor: colors.playFocused,
   },
   playPressed: {
     backgroundColor: colors.playPressed,
