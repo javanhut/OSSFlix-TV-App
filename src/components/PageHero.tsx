@@ -10,7 +10,7 @@ import { PosterWall } from "./PosterWall";
 // Screens pad their content by this much; the hero cancels it to run edge to edge.
 export const SCREEN_GUTTER = 18;
 // Room for the transparent stack header (back button) the hero sits under.
-const HEADER_SPACE = 52;
+export const HEADER_SPACE = 52;
 
 /** Full-bleed page header over a drifting poster wall (web `PageHero`). */
 export function PageHero({

@@ -1,15 +1,21 @@
+import { useCallback, useRef } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { api } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
-import { PageHero, SCREEN_GUTTER } from "../components/PageHero";
+import { HEADER_SPACE, PageHero, SCREEN_GUTTER } from "../components/PageHero";
 import { TitleRail } from "../components/TitleRail";
+import { TV_GLIDE_SCROLL_PROPS } from "../hooks/useFocusGlide";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { colors } from "../theme/colors";
 import type { Recommendation } from "../types/api";
+
+// Room above a focused row for its cards' scale-up and ring.
+const RAIL_TOP_MARGIN = 8;
 
 // Group by the first genre in "Because you watch Action, Drama", like the web For You page.
 export function groupRecommendations(recs: Recommendation[]): { title: string; items: Recommendation[] }[] {
@@ -31,6 +37,24 @@ export function RecommendationsScreen() {
     queryKey: ["recommendations"],
     queryFn: () => api.getRecommendations(),
   });
+  // TV: the page glides the focused row to just under the see-through header (the first row only
+  // as far as it needs to, so the hero stays in view above it).
+  const insets = useSafeAreaInsets();
+  const headerClearance = insets.top + HEADER_SPACE;
+  const scrollRef = useRef<ScrollView>(null);
+  const viewportHeightRef = useRef(0);
+  const railLayoutsRef = useRef(new Map<string, { y: number; height: number }>());
+  const glideToRail = useCallback(
+    (key: string, first: boolean) => {
+      const rail = railLayoutsRef.current.get(key);
+      if (!rail) return;
+      const y = first
+        ? rail.y + rail.height - viewportHeightRef.current + RAIL_TOP_MARGIN
+        : rail.y - RAIL_TOP_MARGIN - headerClearance;
+      scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+    },
+    [headerClearance],
+  );
 
   if (query.isLoading) {
     return (
@@ -45,8 +69,14 @@ export function RecommendationsScreen() {
 
   return (
     <ScrollView
+      ref={scrollRef}
+      testID="recommendations-scroll"
       style={styles.screen}
       contentContainerStyle={styles.content}
+      onLayout={(event) => {
+        viewportHeightRef.current = event.nativeEvent.layout.height;
+      }}
+      {...TV_GLIDE_SCROLL_PROPS}
       refreshControl={
         <RefreshControl
           refreshing={query.isRefetching}
@@ -61,13 +91,21 @@ export function RecommendationsScreen() {
         images={recs.map((rec) => rec.imagePath)}
       />
       {groups.length ? (
-        groups.map((group) => (
-          <TitleRail
+        groups.map((group, index) => (
+          <View
             key={group.title}
-            title={group.title}
-            items={group.items}
-            onSelect={(item) => navigation.navigate("TitleDetails", { dirPath: item.pathToDir })}
-          />
+            onLayout={(event) => {
+              const { y, height } = event.nativeEvent.layout;
+              railLayoutsRef.current.set(group.title, { y, height });
+            }}
+          >
+            <TitleRail
+              title={group.title}
+              items={group.items}
+              onSelect={(item) => navigation.navigate("TitleDetails", { dirPath: item.pathToDir })}
+              onRowFocus={() => glideToRail(group.title, index === 0)}
+            />
+          </View>
         ))
       ) : (
         <EmptyState

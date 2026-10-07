@@ -25,6 +25,7 @@ type ButtonProps = {
   iconNode?: ReactNode;
   labelStyle?: StyleProp<TextStyle>;
   onFocus?: () => void;
+  onBlur?: () => void;
 };
 
 /** White, high-contrast play/resume action (web `.oss-btn-play`). */
@@ -41,6 +42,7 @@ export function PlayButton({
   iconNode,
   labelStyle,
   onFocus,
+  onBlur,
 }: ButtonProps) {
   const hasTVPreferredFocus = useTVPreferredFocus(!!preferredFocus);
   return (
@@ -51,6 +53,7 @@ export function PlayButton({
       accessibilityRole="button"
       hasTVPreferredFocus={hasTVPreferredFocus}
       onFocus={onFocus}
+      onBlur={onBlur}
       focusStyle={[styles.playFocused, focusStyle]}
       style={({ pressed }) => [
         styles.base,
@@ -81,6 +84,7 @@ export function GlassButton({
   iconNode,
   labelStyle,
   onFocus,
+  onBlur,
 }: ButtonProps) {
   const hasTVPreferredFocus = useTVPreferredFocus(!!preferredFocus);
   return (
@@ -91,6 +95,7 @@ export function GlassButton({
       accessibilityRole="button"
       hasTVPreferredFocus={hasTVPreferredFocus}
       onFocus={onFocus}
+      onBlur={onBlur}
       focusStyle={focusStyle}
       style={({ pressed }) => [
         styles.base,
@@ -121,6 +126,7 @@ export function PrimaryButton({
   iconNode,
   labelStyle,
   onFocus,
+  onBlur,
 }: ButtonProps) {
   const hasTVPreferredFocus = useTVPreferredFocus(!!preferredFocus);
   return (
@@ -131,6 +137,7 @@ export function PrimaryButton({
       accessibilityRole="button"
       hasTVPreferredFocus={hasTVPreferredFocus}
       onFocus={onFocus}
+      onBlur={onBlur}
       focusStyle={focusStyle}
       style={({ pressed }) => [
         styles.base,

@@ -1,7 +1,7 @@
 import { type PropsWithChildren, useEffect } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { NavigationContainer, DarkTheme } from "@react-navigation/native";
+import { ActivityIndicator, AppState, StyleSheet, View } from "react-native";
+import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NavigationContainer, DarkTheme, useNavigationContainerRef } from "@react-navigation/native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
 
@@ -12,6 +12,23 @@ import { colors } from "../theme/colors";
 import { fontAssets } from "../theme/typography";
 
 const queryClient = new QueryClient();
+
+// Data on screen older than this is refetched when you navigate to (or back to) a screen.
+export const REFRESH_AFTER_MS = 30_000;
+
+/**
+ * Tab screens stay mounted for the whole session, so without this their queries would only ever
+ * load once and new titles added on the server would never show up. Refetches the mounted queries
+ * that have gone stale; skipped while the player is up so it doesn't compete with the video.
+ */
+export function refreshVisibleQueries(client: QueryClient, routeName: string | undefined) {
+  if (routeName === "Player") return;
+  const cutoff = Date.now() - REFRESH_AFTER_MS;
+  void client.refetchQueries({
+    type: "active",
+    predicate: (query) => query.state.dataUpdatedAt < cutoff,
+  });
+}
 
 function BootstrappedApp({ children }: PropsWithChildren) {
   const bootstrapped = useSessionStore((state) => state.bootstrapped);
@@ -37,6 +54,15 @@ function BootstrappedApp({ children }: PropsWithChildren) {
     void bootstrapDownloads().catch(() => {});
   }, [hydrate]);
 
+  // React Native has no window focus: tell React Query when the app comes back to the foreground
+  // (e.g. from the Fire TV home screen), so whatever is on screen refetches.
+  useEffect(() => {
+    focusManager.setEventListener((setFocused) => {
+      const subscription = AppState.addEventListener("change", (state) => setFocused(state === "active"));
+      return () => subscription.remove();
+    });
+  }, []);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: buildSessionSnapshot reads from the store; these deps trigger the save when any field changes.
   useEffect(() => {
     if (!bootstrapped) return;
@@ -55,10 +81,15 @@ function BootstrappedApp({ children }: PropsWithChildren) {
 }
 
 export function AppProviders({ children }: PropsWithChildren) {
+  const navigationRef = useNavigationContainerRef<Record<string, object | undefined>>();
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <NavigationContainer theme={theme}>
+        <NavigationContainer
+          ref={navigationRef}
+          theme={theme}
+          onStateChange={() => refreshVisibleQueries(queryClient, navigationRef.getCurrentRoute()?.name)}
+        >
           <BootstrappedApp>{children}</BootstrappedApp>
         </NavigationContainer>
       </QueryClientProvider>

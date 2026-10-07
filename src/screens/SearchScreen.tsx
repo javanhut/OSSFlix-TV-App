@@ -8,8 +8,13 @@ import { api } from "../api/client";
 import { AppHeader } from "../components/AppHeader";
 import { EmptyState } from "../components/EmptyState";
 import { TitleCard } from "../components/TitleCard";
+import { TV_GLIDE_SCROLL_PROPS, useFocusGlide } from "../hooks/useFocusGlide";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import { colors } from "../theme/colors";
+import type { TitleSummary } from "../types/api";
+
+const CARD_WIDTH = 160;
+const ROW_GAP = 18;
 
 export function SearchScreen() {
   const [query, setQuery] = useState("");
@@ -20,6 +25,7 @@ export function SearchScreen() {
     queryFn: () => api.search(deferredQuery),
     enabled: deferredQuery.length > 0,
   });
+  const { listRef, glideToRow } = useFocusGlide<TitleSummary>({ stride: CARD_WIDTH * 1.5 + ROW_GAP, inset: ROW_GAP });
 
   return (
     <View style={styles.screen}>
@@ -33,11 +39,13 @@ export function SearchScreen() {
       />
       {results.isFetching && <ActivityIndicator color={colors.primary} style={styles.spinner} />}
       <FlatList
+        ref={listRef}
         data={results.data?.titles || []}
         keyExtractor={(item) => item.pathToDir}
         numColumns={2}
         columnWrapperStyle={styles.row}
         contentContainerStyle={styles.list}
+        {...TV_GLIDE_SCROLL_PROPS}
         ListEmptyComponent={
           deferredQuery.length > 0 ? (
             <EmptyState title="No matching titles" subtitle="Try a broader title, genre, or keyword." />
@@ -48,11 +56,12 @@ export function SearchScreen() {
             />
           )
         }
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <TitleCard
             item={item}
-            width={160}
+            width={CARD_WIDTH}
             onPress={() => navigation.navigate("TitleDetails", { dirPath: item.pathToDir })}
+            onFocus={() => glideToRow(Math.floor(index / 2))}
           />
         )}
       />
@@ -81,11 +90,11 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   list: {
-    paddingTop: 18,
+    paddingTop: ROW_GAP,
     paddingBottom: 32,
   },
   row: {
     justifyContent: "space-between",
-    marginBottom: 18,
+    marginBottom: ROW_GAP,
   },
 });

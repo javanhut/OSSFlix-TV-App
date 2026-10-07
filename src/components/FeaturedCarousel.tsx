@@ -93,6 +93,22 @@ export function FeaturedCarousel({
   const screen = useWindowDimensions();
   const [activeIndex, setActiveIndex] = useState(0);
   const [slideWidth, setSlideWidth] = useState(0);
+  // While the remote is on the hero, focus moves with the slides: otherwise an auto-advance would
+  // leave it on the previous slide's (now offscreen) Play, and OK would play the wrong title.
+  // The slide whose Play takes focus; the first one when the screen opens.
+  const [focusSlide, setFocusSlide] = useState<number | null>(0);
+  const focusInHeroRef = useRef(false);
+  const handleButtonFocus = useCallback(() => {
+    focusInHeroRef.current = true;
+    onFocus?.();
+  }, [onFocus]);
+  const handleButtonBlur = useCallback(() => {
+    focusInHeroRef.current = false;
+  }, []);
+  const showSlide = useCallback((index: number) => {
+    setActiveIndex(index);
+    setFocusSlide(focusInHeroRef.current ? index : null);
+  }, []);
   const listRef = useRef<FlatList<TitleSummary>>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -115,10 +131,10 @@ export function FeaturedCarousel({
         offset: next * slideWidth,
         animated: true,
       });
-      setActiveIndex(next);
+      showSlide(next);
     }, AUTO_ADVANCE_MS);
     return clearTimer;
-  }, [activeIndex, items.length, slideWidth, clearTimer]);
+  }, [activeIndex, items.length, slideWidth, clearTimer, showSlide]);
 
   const handleLayout = (event: LayoutChangeEvent) => {
     const w = event.nativeEvent.layout.width;
@@ -129,7 +145,7 @@ export function FeaturedCarousel({
     if (slideWidth === 0) return;
     const idx = Math.round(event.nativeEvent.contentOffset.x / slideWidth);
     const clamped = Math.max(0, Math.min(items.length - 1, idx));
-    if (clamped !== activeIndex) setActiveIndex(clamped);
+    if (clamped !== activeIndex) showSlide(clamped);
   };
 
   if (!items.length) return null;
@@ -194,23 +210,25 @@ export function FeaturedCarousel({
                     <PlayButton
                       label="Play"
                       large
-                      preferredFocus={index === 0}
+                      preferredFocus={index === focusSlide}
                       onPress={() => onPlay(item)}
                       iconNode={<Ionicons name="play" size={18} color={colors.playText} />}
                       style={styles.actionButton}
                       focusStyle={focusGlow}
-                      onFocus={onFocus}
+                      onFocus={handleButtonFocus}
+                      onBlur={handleButtonBlur}
                     />
                   ) : null}
                   <GlassButton
                     label="More Info"
                     icon="info"
                     large
-                    preferredFocus={!onPlay && index === 0}
+                    preferredFocus={!onPlay && index === focusSlide}
                     onPress={() => onSelect(item)}
                     style={styles.actionButton}
                     focusStyle={focusGlow}
-                    onFocus={onFocus}
+                    onFocus={handleButtonFocus}
+                    onBlur={handleButtonBlur}
                   />
                 </View>
               </View>
@@ -236,7 +254,7 @@ export function FeaturedCarousel({
                 accessibilityLabel={`Show ${item.name}`}
                 onPress={() => {
                   listRef.current?.scrollToOffset({ offset: idx * slideWidth, animated: true });
-                  setActiveIndex(idx);
+                  showSlide(idx);
                 }}
                 style={styles.dot}
               />

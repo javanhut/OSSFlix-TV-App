@@ -1,5 +1,5 @@
 import type React from "react";
-import { fireEvent, render as rtlRender } from "@testing-library/react-native";
+import { act, fireEvent, render as rtlRender } from "@testing-library/react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { FeaturedCarousel } from "../../src/components/FeaturedCarousel";
 import { api } from "../../src/api/client";
@@ -72,6 +72,50 @@ describe("FeaturedCarousel", () => {
       </QueryClientProvider>,
     );
     expect(queryByText("Play")).toBeNull();
+  });
+
+  describe("auto-advance on a TV", () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    // Indexes of the buttons that will take D-pad focus (each slide has Play, then More Info).
+    function preferredPlaySlides(root: any) {
+      const buttons = root.findAll(
+        (node: any) =>
+          typeof node.type === "string" &&
+          node.props.accessibilityRole === "button" &&
+          "hasTVPreferredFocus" in node.props,
+      );
+      return buttons.flatMap((node: any, i: number) => (node.props.hasTVPreferredFocus ? [i] : []));
+    }
+
+    function renderAdvancing() {
+      const utils = render(<FeaturedCarousel items={items} height={400} onSelect={() => {}} onPlay={() => {}} />);
+      fireEvent(utils.getByTestId("featured-carousel"), "layout", {
+        nativeEvent: { layout: { width: 900, height: 400 } },
+      });
+      act(() => jest.advanceTimersByTime(50));
+      return utils;
+    }
+
+    it("takes focus along to the next slide while the remote is on the hero", () => {
+      const { getAllByText, UNSAFE_root } = renderAdvancing();
+      // Buttons per slide: Play then More Info.
+      expect(preferredPlaySlides(UNSAFE_root)).toEqual([0]);
+      fireEvent(getAllByText("Play")[0], "focus");
+      act(() => jest.advanceTimersByTime(8000));
+      act(() => jest.advanceTimersByTime(50));
+      expect(preferredPlaySlides(UNSAFE_root)).toEqual([2]);
+    });
+
+    it("leaves focus alone once the remote has moved off the hero", () => {
+      const { getAllByText, UNSAFE_root } = renderAdvancing();
+      fireEvent(getAllByText("Play")[0], "focus");
+      fireEvent(getAllByText("Play")[0], "blur");
+      act(() => jest.advanceTimersByTime(8000));
+      act(() => jest.advanceTimersByTime(50));
+      expect(preferredPlaySlides(UNSAFE_root)).toEqual([]);
+    });
   });
 
   it("shows the active title's description once it loads", async () => {

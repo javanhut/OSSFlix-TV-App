@@ -44,6 +44,7 @@ const BASIC_GENRES = new Set([
 ]);
 
 const FEATURED_LIMIT = 6;
+const LIBRARY_POLL_MS = 5 * 60 * 1000;
 
 // Same sections as the web navbar. Also the way into them on TV/landscape, where
 // the swipe-in sidebar isn't available.
@@ -82,6 +83,8 @@ export function HomeScreen() {
   const categoriesQuery = useQuery({
     queryKey: ["categories"],
     queryFn: api.getCategories,
+    // A TV can sit on this screen for hours; pick up newly added titles while it does.
+    refetchInterval: LIBRARY_POLL_MS,
   });
   const continueWatchingQuery = useQuery({
     queryKey: ["continue-watching"],

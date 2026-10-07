@@ -5,6 +5,7 @@ jest.mock("@react-navigation/native", () => ({
 }));
 
 import React from "react";
+import { FlatList } from "react-native";
 import { fireEvent } from "@testing-library/react-native";
 import { ExploreScreen } from "../../src/screens/ExploreScreen";
 import { api } from "../../src/api/client";
@@ -67,5 +68,26 @@ describe("ExploreScreen", () => {
     jest.spyOn(api, "getCategories").mockResolvedValue([] as any);
     const { findByText } = renderWithQuery(<ExploreScreen />);
     expect(await findByText("No categories yet")).toBeTruthy();
+  });
+
+  it("glides the focused tile's row into the second slot", async () => {
+    const scrollSpy = jest.spyOn(FlatList.prototype, "scrollToOffset").mockImplementation(() => {});
+    jest.spyOn(api, "getCategories").mockResolvedValue(
+      Array.from({ length: 10 }, (_, i) => ({
+        genre: `Genre ${i}`,
+        titles: [{ pathToDir: `g${i}`, name: `T${i}`, imagePath: null, type: "Movie" }],
+      })) as any,
+    );
+    const { findByText, getByText } = renderWithQuery(<ExploreScreen />);
+    fireEvent(await findByText("Explore"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 180 } },
+    });
+
+    // Genre 6 is in the fourth row (two per row): row 3 sits one row down from the top.
+    fireEvent(getByText("Genre 6"), "focus");
+    expect(scrollSpy).toHaveBeenLastCalledWith({ offset: 18 + 180 + 2 * 140 - 14, animated: true });
+
+    fireEvent(getByText("Genre 2"), "focus");
+    expect(scrollSpy).toHaveBeenLastCalledWith({ offset: 0, animated: true });
   });
 });
